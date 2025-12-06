@@ -17,13 +17,13 @@ st.markdown("""<meta name="robots" content="noindex, nofollow">""", unsafe_allow
 # 📅 2. 時間枠の自動生成
 # ==========================================
 TIME_SLOTS = []
-WEEKDAYS = ["月曜", "火曜", "水曜", "木曜", "金曜"]
-WD_START, WD_END = 17, 22
+WEEKDAYS = ["12/15", "12/16", "12/17", "12/18", "12/19"]
+WD_START, WD_END = 20, 23
 for day in WEEKDAYS:
     for hour in range(WD_START, WD_END):
         TIME_SLOTS.append(f"{day} {hour}:00-{hour+1}:00")
 
-WEEKENDS = ["土曜", "日曜"]
+WEEKENDS = ["12/20", "12/21"]
 WE_START, WE_END = 10, 23
 for day in WEEKENDS:
     for hour in range(WE_START, WE_END):
