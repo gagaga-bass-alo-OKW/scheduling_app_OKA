@@ -191,137 +191,165 @@ with tab2:
                 else:
                     st.error("「氏名」「文理」「日時」はすべて必須です。")
 
-# --- Tab 3: 管理者用 ---
+# --- Tab 3: 管理者用（セキュリティ強化版） ---
 with tab3:
     st.header("🔒 管理者ダッシュボード")
-    password = st.text_input("管理者パスワード", type="password")
-    
-    if password == st.secrets["ADMIN_PASSWORD"]:
-        st.success("認証成功")
 
-        # --- 🆕 公開設定スイッチ ---
-        st.subheader("📡 公開設定")
-        col_setting1, col_setting2 = st.columns([1, 3])
-        with col_setting1:
-            if is_accepting:
-                if st.button("🔴 受付を停止する"):
-                    set_status(False)
-                    st.rerun()
-            else:
-                if st.button("🟢 受付を開始する"):
-                    set_status(True)
-                    st.rerun()
-        with col_setting2:
-            if is_accepting:
-                st.info("現在は「回答受付中」です。生徒・大学生は入力フォームにアクセスできます。")
-            else:
-                st.error("現在は「停止中」です。入力フォームは非表示になっています。")
-        st.write("---")
-        # ------------------------
+    # セッションステートで「間違い回数」を記録する
+    if 'login_attempts' not in st.session_state:
+        st.session_state['login_attempts'] = 0
+
+    # 5回以上間違えていたらロックする
+    if st.session_state['login_attempts'] >= 5:
+        st.error("⚠️ パスワードの間違いが多すぎます。セキュリティのためロックされました。")
+        st.warning("解除するにはブラウザを再読み込み（リロード）してください。")
+    else:
+        # パスワード入力フォーム
+        password = st.text_input("管理者パスワード", type="password")
         
-        # 以下、通常のマッチング機能
-        if 'matching_results' not in st.session_state:
-            st.session_state['matching_results'] = None
+        # パスワードが入力された時だけチェック
+        if password:
+            if password == st.secrets["ADMIN_PASSWORD"]:
+                # 正解したら回数をリセット
+                st.session_state['login_attempts'] = 0
+                st.success("認証成功")
 
-        df_students = load_data_from_sheet("students")
-        df_mentors = load_data_from_sheet("mentors")
-        df_history = load_data_from_sheet("history")
-        
-        col_a, col_b, col_c = st.columns(3)
-        with col_a:
-            st.write(f"📋 生徒データ ({len(df_students)}件)")
-            st.dataframe(df_students)
-        with col_b:
-            st.write(f"📋 メンターデータ ({len(df_mentors)}件)")
-            st.dataframe(df_mentors)
-        with col_c:
-            st.write(f"📜 履歴データ ({len(df_history)}件)")
-            st.dataframe(df_history)
+                # ==========================
+                # ここから下は今までと同じ管理者機能
+                # ==========================
+                
+                # 公開設定スイッチ
+                st.subheader("📡 公開設定")
+                col_setting1, col_setting2 = st.columns([1, 3])
+                with col_setting1:
+                    if is_accepting:
+                        if st.button("🔴 受付を停止する"):
+                            set_status(False)
+                            st.rerun()
+                    else:
+                        if st.button("🟢 受付を開始する"):
+                            set_status(True)
+                            st.rerun()
+                with col_setting2:
+                    if is_accepting:
+                        st.info("現在は「回答受付中」です。生徒・大学生は入力フォームにアクセスできます。")
+                    else:
+                        st.error("現在は「停止中」です。入力フォームは非表示になっています。")
+                st.write("---")
 
-        st.write("---")
-        if st.button("🚀 自動マッチングを実行"):
-            # (マッチングロジックは変更なしのため省略せず記述)
-            if df_students.empty or df_mentors.empty:
-                st.error("データが不足しています。")
+                # データ読み込み
+                if 'matching_results' not in st.session_state:
+                    st.session_state['matching_results'] = None
+
+                df_students = load_data_from_sheet("students")
+                df_mentors = load_data_from_sheet("mentors")
+                df_history = load_data_from_sheet("history")
+                
+                col_a, col_b, col_c = st.columns(3)
+                with col_a:
+                    st.write(f"📋 生徒データ ({len(df_students)}件)")
+                    st.dataframe(df_students)
+                with col_b:
+                    st.write(f"📋 メンターデータ ({len(df_mentors)}件)")
+                    st.dataframe(df_mentors)
+                with col_c:
+                    st.write(f"📜 履歴データ ({len(df_history)}件)")
+                    st.dataframe(df_history)
+
+                st.write("---")
+                if st.button("🚀 自動マッチングを実行"):
+                    if df_students.empty or df_mentors.empty:
+                        st.error("データが不足しています。")
+                    else:
+                        # (マッチングロジック省略 - 元のコードと同じ)
+                        results = []
+                        mentor_schedule = {} 
+                        mentor_streams = {}  
+                        for _, row in df_mentors.iterrows():
+                            m_name = row["メンター氏名"]
+                            slots = set(row["可能日時"].split(",")) if row["可能日時"] else set()
+                            mentor_schedule[m_name] = slots
+                            streams = row["文理"].split(",") if "文理" in row and row["文理"] else []
+                            mentor_streams[m_name] = streams
+
+                        for _, s_row in df_students.iterrows():
+                            s_name = s_row["生徒氏名"]
+                            s_stream = s_row["文理"]
+                            s_slots = set(s_row["可能日時"].split(",")) if s_row["可能日時"] else set()
+                            want_prev = (s_row["前回希望"] == "あり")
+                            
+                            prev_mentor = None
+                            if not df_history.empty and "生徒氏名" in df_history.columns:
+                                hist = df_history[df_history["生徒氏名"] == s_name]
+                                if not hist.empty:
+                                    prev_mentor = hist.iloc[-1]["前回担当メンター"]
+
+                            assigned_mentor = None
+                            assigned_slot = None
+                            candidates = list(mentor_schedule.keys())
+                            if want_prev and prev_mentor in candidates:
+                                candidates.remove(prev_mentor)
+                                candidates.insert(0, prev_mentor)
+
+                            for m_name in candidates:
+                                m_streams_list = mentor_streams.get(m_name, [])
+                                if s_stream != "未定" and s_stream not in m_streams_list:
+                                    continue 
+                                common = s_slots.intersection(mentor_schedule[m_name])
+                                if common:
+                                    slot = list(common)[0]
+                                    assigned_mentor = m_name
+                                    assigned_slot = slot
+                                    mentor_schedule[m_name].remove(slot)
+                                    break
+                            
+                            results.append({
+                                "生徒氏名": s_name,
+                                "決定メンター": assigned_mentor,
+                                "決定日時": assigned_slot,
+                                "ステータス": "決定" if assigned_mentor else "未定",
+                                "学校": s_row["学校"],
+                                "生徒文理": s_stream,
+                                "メンター文理": ",".join(mentor_streams.get(assigned_mentor, [])) if assigned_mentor else "",
+                                "前回担当メンター": assigned_mentor if assigned_mentor else ""
+                            })
+
+                        st.session_state['matching_results'] = pd.DataFrame(results)
+
+                if st.session_state['matching_results'] is not None:
+                    df_res = st.session_state['matching_results']
+                    st.success("マッチング計算完了！")
+                    st.dataframe(df_res)
+                    
+                    csv = df_res.to_csv(index=False).encode('utf-8-sig')
+                    st.download_button("📥 結果をCSVでダウンロード", csv, "matching_result.csv", "text/csv")
+                    
+                    st.write("---")
+                    st.warning("⚠️ **イベント終了後の処理**")
+                    st.write("全員への連絡が終わったら、以下のボタンを押して次回の準備をしてください。")
+                    
+                    if st.button("✅ 履歴に保存して、データをリセットする"):
+                        history_data = df_res[df_res["ステータス"] == "決定"][["生徒氏名", "前回担当メンター"]]
+                        append_data_to_sheet(history_data, "history")
+                        save_data_to_sheet(pd.DataFrame(), "students")
+                        save_data_to_sheet(pd.DataFrame(), "mentors")
+                        st.session_state['matching_results'] = None
+                        set_status(False) 
+                        st.success("リセット完了！自動的に「受付停止」状態にしました。")
+                        st.rerun()
+
             else:
-                results = []
-                mentor_schedule = {} 
-                mentor_streams = {}  
-                for _, row in df_mentors.iterrows():
-                    m_name = row["メンター氏名"]
-                    slots = set(row["可能日時"].split(",")) if row["可能日時"] else set()
-                    mentor_schedule[m_name] = slots
-                    streams = row["文理"].split(",") if "文理" in row and row["文理"] else []
-                    mentor_streams[m_name] = streams
-
-                for _, s_row in df_students.iterrows():
-                    s_name = s_row["生徒氏名"]
-                    s_stream = s_row["文理"]
-                    s_slots = set(s_row["可能日時"].split(",")) if s_row["可能日時"] else set()
-                    want_prev = (s_row["前回希望"] == "あり")
-                    
-                    prev_mentor = None
-                    if not df_history.empty and "生徒氏名" in df_history.columns:
-                        hist = df_history[df_history["生徒氏名"] == s_name]
-                        if not hist.empty:
-                            prev_mentor = hist.iloc[-1]["前回担当メンター"]
-
-                    assigned_mentor = None
-                    assigned_slot = None
-                    candidates = list(mentor_schedule.keys())
-                    if want_prev and prev_mentor in candidates:
-                        candidates.remove(prev_mentor)
-                        candidates.insert(0, prev_mentor)
-
-                    for m_name in candidates:
-                        m_streams_list = mentor_streams.get(m_name, [])
-                        if s_stream != "未定" and s_stream not in m_streams_list:
-                            continue 
-                        common = s_slots.intersection(mentor_schedule[m_name])
-                        if common:
-                            slot = list(common)[0]
-                            assigned_mentor = m_name
-                            assigned_slot = slot
-                            mentor_schedule[m_name].remove(slot)
-                            break
-                    
-                    results.append({
-                        "生徒氏名": s_name,
-                        "決定メンター": assigned_mentor,
-                        "決定日時": assigned_slot,
-                        "ステータス": "決定" if assigned_mentor else "未定",
-                        "学校": s_row["学校"],
-                        "生徒文理": s_stream,
-                        "メンター文理": ",".join(mentor_streams.get(assigned_mentor, [])) if assigned_mentor else "",
-                        "前回担当メンター": assigned_mentor if assigned_mentor else ""
-                    })
-
-                st.session_state['matching_results'] = pd.DataFrame(results)
-
-        if st.session_state['matching_results'] is not None:
-            df_res = st.session_state['matching_results']
-            st.success("マッチング計算完了！")
-            st.dataframe(df_res)
-            
-            csv = df_res.to_csv(index=False).encode('utf-8-sig')
-            st.download_button("📥 結果をCSVでダウンロード", csv, "matching_result.csv", "text/csv")
-            
-            st.write("---")
-            st.warning("⚠️ **イベント終了後の処理**")
-            st.write("全員への連絡が終わったら、以下のボタンを押して次回の準備をしてください。")
-            
-            if st.button("✅ 履歴に保存して、データをリセットする"):
-                history_data = df_res[df_res["ステータス"] == "決定"][["生徒氏名", "前回担当メンター"]]
-                append_data_to_sheet(history_data, "history")
-                save_data_to_sheet(pd.DataFrame(), "students")
-                save_data_to_sheet(pd.DataFrame(), "mentors")
-                st.session_state['matching_results'] = None
+                # パスワードが間違っている場合
+                st.session_state['login_attempts'] += 1 # 間違いカウントを増やす
                 
-                # 自動的に受付も停止する
-                set_status(False) 
+                # 3秒待機させる（攻撃を遅らせる）
+                time.sleep(3)
                 
-                st.success("リセット完了！自動的に「受付停止」状態にしました。")
-                st.rerun()
-
-    elif password:
-        st.error("パスワードが違います")
+                st.error("パスワードが違います")
+                
+                # 残り回数を表示（親切設計）
+                attempts_left = 5 - st.session_state['login_attempts']
+                if attempts_left > 0:
+                    st.info(f"あと {attempts_left} 回間違えるとロックされます。")
+                else:
+                    st.rerun() # すぐにロック画面へ
