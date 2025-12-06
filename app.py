@@ -10,6 +10,9 @@ import time
 st.set_page_config(page_title="ALOHA面談日程調整", layout="wide")
 st.markdown("""<meta name="robots" content="noindex, nofollow">""", unsafe_allow_html=True)
 
+# 画像表示（必要に応じてファイル名を変更してください）
+# st.image("logo.png", use_column_width=True) 
+
 # ==========================================
 # 📅 2. 時間枠の自動生成
 # ==========================================
@@ -26,6 +29,7 @@ for day in WEEKENDS:
     for hour in range(WE_START, WE_END):
         TIME_SLOTS.append(f"{day} {hour}:00-{hour+1}:00")
 
+# 曜日ソート用
 DAY_ORDER = {"月曜": 0, "火曜": 1, "水曜": 2, "木曜": 3, "金曜": 4, "土曜": 5, "日曜": 6}
 
 # ==========================================
@@ -35,10 +39,9 @@ DAY_ORDER = {"月曜": 0, "火曜": 1, "水曜": 2, "木曜": 3, "金曜": 4, "�
 def get_spreadsheet():
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
     
-    # 🛡️ 鍵データの自動修復ロジック（ここを追加！）
-    # secretsのデータを辞書としてコピー
+    # 🛡️ 鍵データの自動修復ロジック
+    # secretsのデータを辞書としてコピーし、改行コード(\n)を正しく置換する
     key_dict = dict(st.secrets["gcp_service_account"])
-    # 改行コード(\n)が文字として認識されてしまっている場合、本物の改行に置換する
     if "private_key" in key_dict:
         key_dict["private_key"] = key_dict["private_key"].replace("\\n", "\n")
 
@@ -84,6 +87,7 @@ def set_status(is_open):
     df = pd.DataFrame([{"status": "OPEN" if is_open else "CLOSED"}])
     save_data_to_sheet(df, "settings")
 
+# 現在の状態を読み込む
 is_accepting = get_status()
 
 # ==========================================
@@ -116,8 +120,10 @@ with tab1:
         with st.form("student_form"):
             col1, col2 = st.columns(2)
             with col1:
+                # 名前入力の空白除去処理
                 s_name_input = st.text_input("氏名（本名） ※")
                 s_name = s_name_input.strip() if s_name_input else ""
+                
                 s_line_name = st.text_input("公式LINEでのあなたの名前（表示名） ※")
                 s_school = st.text_input("学校名 ※")
             with col2:
@@ -153,6 +159,7 @@ with tab1:
                         "可能日時": ",".join(s_available)
                     }
                     if not df_s.empty and "生徒氏名" in df_s.columns:
+                        # 上書き保存ロジック
                         df_s = df_s[df_s["生徒氏名"] != s_name]
                         df_s = pd.concat([df_s, pd.DataFrame([new_row])], ignore_index=True)
                         st.success(f"{s_name} さんの情報を更新（上書き）しました！")
@@ -174,6 +181,7 @@ with tab2:
         with st.form("mentor_form"):
             m_name_input = st.text_input("氏名（大学生） ※")
             m_name = m_name_input.strip() if m_name_input else ""
+            
             st.write("▼ 受験時の文理を選択してください（両方対応可能な場合は複数選択可） ※")
             m_stream = st.multiselect("文理選択", ["文系", "理系"])
             st.write("---")
@@ -208,19 +216,27 @@ with tab3:
     if st.session_state['login_attempts'] >= 5:
         st.error("⚠️ ロックされています。解除するにはブラウザを再読み込みしてください。")
     else:
-        password = st.text_input("管理者パスワード", type="password")
+        # パスワード入力フォーム
+        password_input = st.text_input("管理者パスワード", type="password")
         
-        if password:
+        # ログインボタン または 入力済みエンターで実行
+        if st.button("🔑 ログイン") or password_input:
             try:
-                correct_pass = st.secrets.get("ADMIN_PASSWORD")
+                # Secretsから取得（ない場合は空文字にする）
+                secret_pass = str(st.secrets.get("ADMIN_PASSWORD", ""))
                 
-                if not correct_pass:
+                # 空白削除して比較（入力ミス防止）
+                input_clean = password_input.strip()
+                secret_clean = secret_pass.strip()
+                
+                if not secret_clean:
                     st.warning("⚠️ システム設定エラー: Secretsにパスワードが設定されていません。")
                 
-                elif password == correct_pass:
+                elif input_clean == secret_clean:
                     st.session_state['login_attempts'] = 0
                     st.success("認証成功")
-
+                    
+                    # === 認証成功時の機能 ===
                     st.subheader("📡 公開設定")
                     col_setting1, col_setting2 = st.columns([1, 3])
                     with col_setting1:
@@ -284,6 +300,7 @@ with tab3:
 
                     st.write("---")
 
+                    # データ表示
                     if 'matching_results' not in st.session_state:
                         st.session_state['matching_results'] = None
                     if 'managers_results' not in st.session_state:
@@ -305,6 +322,8 @@ with tab3:
                         st.dataframe(df_history)
 
                     st.write("---")
+                    
+                    # 自動マッチングボタン
                     if st.button("🚀 自動マッチングを実行"):
                         if df_students.empty or df_mentors.empty:
                             st.warning("データが不足しています。")
@@ -328,6 +347,7 @@ with tab3:
                                 streams = row["文理"].split(",") if "文理" in row and row["文理"] else []
                                 mentor_streams[m_name] = streams
 
+                            # 生徒のマッチング
                             for _, s_row in df_students.iterrows():
                                 s_name = s_row["生徒氏名"]
                                 s_stream = s_row["文理"]
@@ -435,6 +455,7 @@ with tab3:
                             
                             st.session_state['managers_results'] = pd.DataFrame(managers)
 
+                    # 結果表示エリア
                     if st.session_state['managers_results'] is not None:
                         st.subheader("🔑 部屋管理者 (各日1名)")
                         st.dataframe(st.session_state['managers_results'])
@@ -463,12 +484,17 @@ with tab3:
                             st.rerun()
 
                 else:
-                    st.session_state['login_attempts'] += 1
-                    time.sleep(3)
-                    st.warning("パスワードが違います") 
-                    attempts_left = 5 - st.session_state['login_attempts']
-                    if attempts_left <= 0:
-                        st.rerun()
+                    # パスワード不一致の処理（ボタン押下時のみ）
+                    if password_input:
+                        st.session_state['login_attempts'] += 1
+                        time.sleep(3)
+                        st.warning("パスワードが違います") 
+                        
+                        attempts_left = 5 - st.session_state['login_attempts']
+                        if attempts_left <= 0:
+                            st.rerun()
 
             except Exception as e:
+                # 予期せぬエラーは隠して警告のみ
                 st.warning("システムエラー: 設定を確認してください")
+                # print(e) # 必要ならログに出力
