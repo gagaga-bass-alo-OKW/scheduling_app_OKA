@@ -321,12 +321,11 @@ with tab3:
 
                     st.write("---")
 
-                    # テストデータ生成（修正版）
+                    # テストデータ生成
                     st.subheader("🧪 テストデータ生成")
                     with st.expander("動作確認用のダミーデータをダウンロード"):
                         st.write("以下のボタンを押すと、架空の「生徒40名」「メンター10名」のCSVファイルをダウンロードできます。")
                         
-                        # 修正箇所: 日時データを "" で囲んで、カンマによるズレを防止
                         test_students_csv = """生徒氏名,LINE名,学校,学年,文理,前回希望,指名希望,質問内容,可能日時
 佐藤 一郎,Sato1,〇〇高校,高1,文系,なし,,部活との両立,"月曜 17:00-18:00,月曜 18:00-19:00"
 鈴木 次郎,Jiro_S,〇〇高校,高2,理系,なし,,理系の進路,"火曜 18:00-19:00,水曜 17:00-18:00"
@@ -558,7 +557,8 @@ with tab3:
                         st.write("全員への連絡が終わったら、以下のボタンを押して次回の準備をしてください。")
                         
                         if st.button("✅ 履歴に保存して、データをリセットする"):
-                            history_data = df_res[df_res["ステータス"] == "決定"][["生徒氏名", "前回担当メンター"]]
+                            # ここも追加: 時間も履歴に残す
+                            history_data = df_res[df_res["ステータス"] == "決定"][["生徒氏名", "前回担当メンター", "決定日時"]]
                             append_data_to_sheet(history_data, "history")
                             save_data_to_sheet(pd.DataFrame(), "students")
                             save_data_to_sheet(pd.DataFrame(), "mentors")
