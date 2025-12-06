@@ -157,7 +157,7 @@ with tab3:
     st.header("管理者ダッシュボード")
 
     # Secretsからパスワードを取得
-    ADMIN_PASSWORD = st.secrets["Aloha.edu_26"]
+    ADMIN_PASSWORD = st.secrets["ADMIN_PASSWORD"]
 
     password = st.text_input("管理者パスワードを入力してください", type="password")
 
