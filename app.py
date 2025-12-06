@@ -554,19 +554,30 @@ with tab3:
                         
                         st.write("---")
                         st.warning("⚠️ **イベント終了後の処理**")
-                        st.write("全員への連絡が終わったら、以下のボタンを押して次回の準備をしてください。")
                         
-                        if st.button("✅ 履歴に保存して、データをリセットする"):
-                            # ここも追加: 時間も履歴に残す
-                            history_data = df_res[df_res["ステータス"] == "決定"][["生徒氏名", "前回担当メンター", "決定日時"]]
-                            append_data_to_sheet(history_data, "history")
-                            save_data_to_sheet(pd.DataFrame(), "students")
-                            save_data_to_sheet(pd.DataFrame(), "mentors")
-                            st.session_state['matching_results'] = None
-                            st.session_state['managers_results'] = None
-                            set_status(False) 
-                            st.success("リセット完了！自動的に「受付停止」状態にしました。")
-                            st.rerun()
+                        # --- ボタン分割 (履歴保存 / リセット) ---
+                        col_op1, col_op2 = st.columns(2)
+                        
+                        with col_op1:
+                            if st.button("💾 マッチング結果を履歴に保存"):
+                                # "決定"ステータスのものだけ履歴に追加
+                                history_data = df_res[df_res["ステータス"] == "決定"][["生徒氏名", "前回担当メンター", "決定日時"]]
+                                append_data_to_sheet(history_data, "history")
+                                st.success("✅ マッチング結果を「履歴」シートに保存しました！")
+
+                        with col_op2:
+                            if st.button("🗑️ データをリセットして受付停止"):
+                                # データを空にする
+                                save_data_to_sheet(pd.DataFrame(), "students")
+                                save_data_to_sheet(pd.DataFrame(), "mentors")
+                                # セッションステートをクリア
+                                st.session_state['matching_results'] = None
+                                st.session_state['managers_results'] = None
+                                # 受付停止
+                                set_status(False) 
+                                st.success("🧹 データをリセットし、受付を停止しました。")
+                                time.sleep(1) # メッセージを読めるように少し待つ
+                                st.rerun()
 
                 else:
                     if password_input:
