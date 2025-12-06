@@ -17,7 +17,7 @@ st.markdown("""<meta name="robots" content="noindex, nofollow">""", unsafe_allow
 # ==========================================
 TIME_SLOTS = []
 WEEKDAYS = ["月曜", "火曜", "水曜", "木曜", "金曜"]
-WD_START, WD_END = 17, 22
+WD_START, WD_END = 20, 23
 for day in WEEKDAYS:
     for hour in range(WD_START, WD_END):
         TIME_SLOTS.append(f"{day} {hour}:00-{hour+1}:00")
