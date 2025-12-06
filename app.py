@@ -10,26 +10,22 @@ import time
 st.set_page_config(page_title="ALOHA面談日程調整", layout="wide")
 st.markdown("""<meta name="robots" content="noindex, nofollow">""", unsafe_allow_html=True)
 
-# 画像表示（必要に応じてファイル名を変更してください）
-# st.image("logo.png", use_column_width=True) 
-
 # ==========================================
 # 📅 2. 時間枠の自動生成
 # ==========================================
 TIME_SLOTS = []
-WEEKDAYS = ["12/15", "12/16", "12/17", "12/18", "12/19"]
-WD_START, WD_END = 20, 23
+WEEKDAYS = ["月曜", "火曜", "水曜", "木曜", "金曜"]
+WD_START, WD_END = 17, 22
 for day in WEEKDAYS:
     for hour in range(WD_START, WD_END):
         TIME_SLOTS.append(f"{day} {hour}:00-{hour+1}:00")
 
-WEEKENDS = ["12/20", "12/21"]
+WEEKENDS = ["土曜", "日曜"]
 WE_START, WE_END = 10, 23
 for day in WEEKENDS:
     for hour in range(WE_START, WE_END):
         TIME_SLOTS.append(f"{day} {hour}:00-{hour+1}:00")
 
-# 曜日ソート用
 DAY_ORDER = {"月曜": 0, "火曜": 1, "水曜": 2, "木曜": 3, "金曜": 4, "土曜": 5, "日曜": 6}
 
 # ==========================================
@@ -39,8 +35,7 @@ DAY_ORDER = {"月曜": 0, "火曜": 1, "水曜": 2, "木曜": 3, "金曜": 4, "�
 def get_spreadsheet():
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
     
-    # 🛡️ 鍵データの自動修復ロジック
-    # secretsのデータを辞書としてコピーし、改行コード(\n)を正しく置換する
+    # 鍵データの自動修復
     key_dict = dict(st.secrets["gcp_service_account"])
     if "private_key" in key_dict:
         key_dict["private_key"] = key_dict["private_key"].replace("\\n", "\n")
@@ -52,7 +47,10 @@ def get_spreadsheet():
 def load_data_from_sheet(sheet_name):
     try:
         sh = get_spreadsheet()
-        worksheet = sh.worksheet(sheet_name)
+        try:
+            worksheet = sh.worksheet(sheet_name)
+        except:
+            return pd.DataFrame()
         data = worksheet.get_all_records()
         return pd.DataFrame(data)
     except Exception:
@@ -60,13 +58,22 @@ def load_data_from_sheet(sheet_name):
 
 def save_data_to_sheet(df, sheet_name):
     sh = get_spreadsheet()
-    worksheet = sh.worksheet(sheet_name)
+    try:
+        worksheet = sh.worksheet(sheet_name)
+    except:
+        worksheet = sh.add_worksheet(title=sheet_name, rows=100, cols=20)
+    
     worksheet.clear()
-    worksheet.update([df.columns.values.tolist()] + df.values.tolist())
+    if not df.empty:
+        worksheet.update([df.columns.values.tolist()] + df.values.tolist())
 
 def append_data_to_sheet(df, sheet_name):
     sh = get_spreadsheet()
-    worksheet = sh.worksheet(sheet_name)
+    try:
+        worksheet = sh.worksheet(sheet_name)
+    except:
+        worksheet = sh.add_worksheet(title=sheet_name, rows=100, cols=20)
+
     existing_data = worksheet.get_all_values()
     if not existing_data:
         worksheet.update([df.columns.values.tolist()] + df.values.tolist())
@@ -87,7 +94,6 @@ def set_status(is_open):
     df = pd.DataFrame([{"status": "OPEN" if is_open else "CLOSED"}])
     save_data_to_sheet(df, "settings")
 
-# 現在の状態を読み込む
 is_accepting = get_status()
 
 # ==========================================
@@ -120,10 +126,8 @@ with tab1:
         with st.form("student_form"):
             col1, col2 = st.columns(2)
             with col1:
-                # 名前入力の空白除去処理
                 s_name_input = st.text_input("氏名（本名） ※")
                 s_name = s_name_input.strip() if s_name_input else ""
-                
                 s_line_name = st.text_input("公式LINEでのあなたの名前（表示名） ※")
                 s_school = st.text_input("学校名 ※")
             with col2:
@@ -159,7 +163,6 @@ with tab1:
                         "可能日時": ",".join(s_available)
                     }
                     if not df_s.empty and "生徒氏名" in df_s.columns:
-                        # 上書き保存ロジック
                         df_s = df_s[df_s["生徒氏名"] != s_name]
                         df_s = pd.concat([df_s, pd.DataFrame([new_row])], ignore_index=True)
                         st.success(f"{s_name} さんの情報を更新（上書き）しました！")
@@ -181,7 +184,6 @@ with tab2:
         with st.form("mentor_form"):
             m_name_input = st.text_input("氏名（大学生） ※")
             m_name = m_name_input.strip() if m_name_input else ""
-            
             st.write("▼ 受験時の文理を選択してください（両方対応可能な場合は複数選択可） ※")
             m_stream = st.multiselect("文理選択", ["文系", "理系"])
             st.write("---")
@@ -216,16 +218,11 @@ with tab3:
     if st.session_state['login_attempts'] >= 5:
         st.error("⚠️ ロックされています。解除するにはブラウザを再読み込みしてください。")
     else:
-        # パスワード入力フォーム
         password_input = st.text_input("管理者パスワード", type="password")
         
-        # ログインボタン または 入力済みエンターで実行
         if st.button("🔑 ログイン") or password_input:
             try:
-                # Secretsから取得（ない場合は空文字にする）
                 secret_pass = str(st.secrets.get("ADMIN_PASSWORD", ""))
-                
-                # 空白削除して比較（入力ミス防止）
                 input_clean = password_input.strip()
                 secret_clean = secret_pass.strip()
                 
@@ -236,7 +233,6 @@ with tab3:
                     st.session_state['login_attempts'] = 0
                     st.success("認証成功")
                     
-                    # === 認証成功時の機能 ===
                     st.subheader("📡 公開設定")
                     col_setting1, col_setting2 = st.columns([1, 3])
                     with col_setting1:
@@ -255,52 +251,71 @@ with tab3:
                             st.error("現在は「停止中」です。")
                     st.write("---")
 
-                    # CSVアップロード機能
-                    st.subheader("📥 生徒CSV一括登録")
-                    with st.expander("CSVアップロード機能を開く"):
-                        st.write("Excelなどで作成した生徒名簿を一括で読み込めます。")
-                        
-                        dummy_data = pd.DataFrame(columns=["生徒氏名", "LINE名", "学校", "学年", "文理", "前回希望", "指名希望", "質問内容", "可能日時"])
-                        csv_template = dummy_data.to_csv(index=False).encode('utf-8-sig')
-                        st.download_button(
-                            label="📄 入力用テンプレート(CSV)をダウンロード",
-                            data=csv_template,
-                            file_name="student_template.csv",
-                            mime="text/csv",
-                        )
-                        st.info("※「可能日時」は `月曜 17:00-18:00,月曜 18:00-19:00` のようにカンマ区切りで入力してください。")
-
-                        uploaded_file = st.file_uploader("CSVファイルをアップロード", type=["csv"])
-                        
-                        if uploaded_file is not None:
-                            try:
-                                df_upload = pd.read_csv(uploaded_file)
-                                st.write("▼ 読み込んだデータプレビュー")
-                                st.dataframe(df_upload.head())
-                                
-                                if st.button("💾 この内容で登録/上書きする"):
-                                    df_current = load_data_from_sheet("students")
-                                    required_cols = ["生徒氏名", "学校", "学年"]
-                                    if not all(col in df_upload.columns for col in required_cols):
-                                        st.error(f"CSVの列名が正しくありません。テンプレートを使用してください。必須: {required_cols}")
-                                    else:
-                                        upload_names = df_upload["生徒氏名"].astype(str).str.strip().tolist()
-                                        df_upload["生徒氏名"] = df_upload["生徒氏名"].astype(str).str.strip()
-                                        
-                                        if not df_current.empty:
-                                            df_current = df_current[~df_current["生徒氏名"].isin(upload_names)]
-                                            df_new = pd.concat([df_current, df_upload], ignore_index=True)
+                    col_csv1, col_csv2 = st.columns(2)
+                    
+                    # 1. 生徒CSVアップロード
+                    with col_csv1:
+                        st.subheader("📥 生徒CSV登録")
+                        with st.expander("生徒CSV機能"):
+                            dummy_s = pd.DataFrame(columns=["生徒氏名", "LINE名", "学校", "学年", "文理", "前回希望", "指名希望", "質問内容", "可能日時"])
+                            csv_template_s = dummy_s.to_csv(index=False).encode('utf-8-sig')
+                            st.download_button("📄 生徒用テンプレート", csv_template_s, "student_template.csv", "text/csv")
+                            
+                            uploaded_file_s = st.file_uploader("生徒CSVをアップロード", type=["csv"], key="s_up")
+                            if uploaded_file_s:
+                                try:
+                                    df_upload = pd.read_csv(uploaded_file_s)
+                                    if st.button("💾 生徒データを登録", key="s_btn"):
+                                        df_current = load_data_from_sheet("students")
+                                        required = ["生徒氏名", "学校", "学年"]
+                                        if not all(col in df_upload.columns for col in required):
+                                            st.error(f"列名エラー。必須: {required}")
                                         else:
-                                            df_new = df_upload
-                                        
-                                        save_data_to_sheet(df_new, "students")
-                                        st.success(f"{len(df_upload)} 件のデータを登録しました！")
-                            except Exception as e:
-                                st.error(f"エラーが発生しました: {e}")
+                                            names = df_upload["生徒氏名"].astype(str).str.strip().tolist()
+                                            df_upload["生徒氏名"] = df_upload["生徒氏名"].astype(str).str.strip()
+                                            if not df_current.empty:
+                                                df_current = df_current[~df_current["生徒氏名"].isin(names)]
+                                                df_new = pd.concat([df_current, df_upload], ignore_index=True)
+                                            else:
+                                                df_new = df_upload
+                                            save_data_to_sheet(df_new, "students")
+                                            st.success(f"{len(df_upload)} 件登録しました！")
+                                except Exception as e:
+                                    st.error(f"エラー: {e}")
+
+                    # 2. メンターCSVアップロード（ここに追加！）
+                    with col_csv2:
+                        st.subheader("📥 メンターCSV登録")
+                        with st.expander("メンターCSV機能"):
+                            dummy_m = pd.DataFrame(columns=["メンター氏名", "文理", "可能日時"])
+                            csv_template_m = dummy_m.to_csv(index=False).encode('utf-8-sig')
+                            st.download_button("📄 メンター用テンプレート", csv_template_m, "mentor_template.csv", "text/csv")
+                            st.caption("※文理は `文系,理系` 、日時は `月曜 17:00-18:00,火曜 18:00-19:00` の形式で。")
+
+                            uploaded_file_m = st.file_uploader("メンターCSVをアップロード", type=["csv"], key="m_up")
+                            if uploaded_file_m:
+                                try:
+                                    df_upload_m = pd.read_csv(uploaded_file_m)
+                                    if st.button("💾 メンターデータを登録", key="m_btn"):
+                                        df_current_m = load_data_from_sheet("mentors")
+                                        required_m = ["メンター氏名", "文理", "可能日時"]
+                                        if not all(col in df_upload_m.columns for col in required_m):
+                                            st.error(f"列名エラー。必須: {required_m}")
+                                        else:
+                                            names_m = df_upload_m["メンター氏名"].astype(str).str.strip().tolist()
+                                            df_upload_m["メンター氏名"] = df_upload_m["メンター氏名"].astype(str).str.strip()
+                                            if not df_current_m.empty:
+                                                df_current_m = df_current_m[~df_current_m["メンター氏名"].isin(names_m)]
+                                                df_new_m = pd.concat([df_current_m, df_upload_m], ignore_index=True)
+                                            else:
+                                                df_new_m = df_upload_m
+                                            save_data_to_sheet(df_new_m, "mentors")
+                                            st.success(f"{len(df_upload_m)} 件登録しました！")
+                                except Exception as e:
+                                    st.error(f"エラー: {e}")
 
                     st.write("---")
 
-                    # データ表示
                     if 'matching_results' not in st.session_state:
                         st.session_state['matching_results'] = None
                     if 'managers_results' not in st.session_state:
@@ -322,13 +337,10 @@ with tab3:
                         st.dataframe(df_history)
 
                     st.write("---")
-                    
-                    # 自動マッチングボタン
                     if st.button("🚀 自動マッチングを実行"):
                         if df_students.empty or df_mentors.empty:
                             st.warning("データが不足しています。")
                         else:
-                            # 1. マッチング処理
                             results = []
                             mentor_schedule = {} 
                             mentor_streams = {}  
@@ -347,7 +359,6 @@ with tab3:
                                 streams = row["文理"].split(",") if "文理" in row and row["文理"] else []
                                 mentor_streams[m_name] = streams
 
-                            # 生徒のマッチング
                             for _, s_row in df_students.iterrows():
                                 s_name = s_row["生徒氏名"]
                                 s_stream = s_row["文理"]
@@ -392,7 +403,6 @@ with tab3:
 
                             df_results = pd.DataFrame(results)
 
-                            # 🔄 並び替えロジック
                             def get_sort_key(val):
                                 if not val or pd.isna(val) or val == "None" or not isinstance(val, str):
                                     return (99, 99)
@@ -410,7 +420,6 @@ with tab3:
                             
                             st.session_state['matching_results'] = df_results
 
-                            # --- 🔑 部屋管理者 (Room Manager) 選定 ---
                             managers = []
                             active_days = set()
                             matched_data = df_results[df_results["ステータス"] == "決定"]
@@ -455,7 +464,6 @@ with tab3:
                             
                             st.session_state['managers_results'] = pd.DataFrame(managers)
 
-                    # 結果表示エリア
                     if st.session_state['managers_results'] is not None:
                         st.subheader("🔑 部屋管理者 (各日1名)")
                         st.dataframe(st.session_state['managers_results'])
@@ -484,17 +492,13 @@ with tab3:
                             st.rerun()
 
                 else:
-                    # パスワード不一致の処理（ボタン押下時のみ）
                     if password_input:
                         st.session_state['login_attempts'] += 1
                         time.sleep(3)
                         st.warning("パスワードが違います") 
-                        
                         attempts_left = 5 - st.session_state['login_attempts']
                         if attempts_left <= 0:
                             st.rerun()
 
             except Exception as e:
-                # 予期せぬエラーは隠して警告のみ
                 st.warning("システムエラー: 設定を確認してください")
-                # print(e) # 必要ならログに出力
