@@ -4,7 +4,19 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import time
 import io
+import streamlit as st
 
+# --- 画面のメニューバーとフッターを隠すCSS ---
+hide_streamlit_style = """
+            <style>
+            #MainMenu {visibility: hidden;}
+            footer {visibility: hidden;}
+            header {visibility: hidden;}
+            </style>
+            """
+st.markdown(hide_streamlit_style, unsafe_allow_html=True)
+
+# ... 以下、通常のコード ...
 # ==========================================
 # 🛡️ 1. 基本設定・検索除け
 # ==========================================
