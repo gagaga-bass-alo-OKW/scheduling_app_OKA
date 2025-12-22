@@ -78,7 +78,7 @@ def render_schedule_grid(default_selected=[], key_suffix=""):
         key=f"grid_wd_{key_suffix}"
     )
     
-    st.markdown("**📅 土日 (9:00 〜 23:00)**")
+    st.markdown("**📅 土日祝 (10:00 〜 23:00)**")
     # 土日グリッド
     edited_we = st.data_editor(
         df_we,
