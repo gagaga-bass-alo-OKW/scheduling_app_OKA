@@ -190,40 +190,112 @@ with tab1:
 
 # --- Tab 2: 大学生用 ---
 with tab2:
-    st.header("大学生用：空きコマ登録")
+    st.header("大学生用：空きコマ登録・確認")
     
     if not is_accepting:
         st.warning("現在は登録期間外です。")
     else:
-        st.write("ご協力ありがとうございます。自身の属性と空き時間を入力してください。")
-        st.caption("※同じ「氏名」で再送信すると、以前の情報が上書きされます。")
+        st.write("ご協力ありがとうございます。")
+        st.info("💡 **新規登録**も**修正**もここから行えます。")
+
+        # 1. 氏名入力とデータの呼び出し
+        col_search1, col_search2 = st.columns([3, 1])
+        with col_search1:
+            input_name_query = st.text_input("あなたの氏名を入力してください", placeholder="例：東大 太郎")
+        with col_search2:
+            st.write("") # レイアウト調整
+            st.write("")
+            load_btn = st.button("データを呼び出す")
+
+        # セッション状態を使って、呼び出したデータを保持する
+        if 'mentor_form_defaults' not in st.session_state:
+            st.session_state['mentor_form_defaults'] = {
+                "name": "", "streams": [], "slots": []
+            }
+
+        # 呼び出しボタンが押されたときの処理
+        if load_btn and input_name_query:
+            df_m_check = load_data_from_sheet("mentors")
+            target_data = pd.DataFrame()
+            
+            if not df_m_check.empty and "メンター氏名" in df_m_check.columns:
+                target_data = df_m_check[df_m_check["メンター氏名"] == input_name_query.strip()]
+            
+            if not target_data.empty:
+                # 既存データあり -> 初期値にセット
+                row = target_data.iloc[0]
+                existing_streams = row["文理"].split(",") if row["文理"] else []
+                existing_slots = row["可能日時"].split(",") if row["可能日時"] else []
+                
+                # 有効な選択肢のみにフィルタリング（時間枠の設定が変わった場合のエラー回避）
+                valid_slots = [s for s in existing_slots if s in TIME_SLOTS]
+                
+                st.session_state['mentor_form_defaults'] = {
+                    "name": row["メンター氏名"],
+                    "streams": existing_streams,
+                    "slots": valid_slots
+                }
+                st.success(f"✅ {input_name_query} さんの登録情報を読み込みました。修正して「更新」を押してください。")
+            else:
+                # データなし -> 新規
+                st.session_state['mentor_form_defaults'] = {
+                    "name": input_name_query.strip(),
+                    "streams": [],
+                    "slots": []
+                }
+                st.info(f"🆕 {input_name_query} さんのデータは見つかりませんでした。新規登録します。")
+        
+        elif load_btn and not input_name_query:
+            st.error("氏名を入力してください。")
+
+        st.write("---")
+
+        # 2. 登録/更新フォーム
+        # session_stateに入っている値をデフォルト値として使用
+        defaults = st.session_state['mentor_form_defaults']
         
         with st.form("mentor_form"):
-            m_name_input = st.text_input("氏名（大学生） ※")
-            m_name = m_name_input.strip() if m_name_input else ""
-            st.write("▼ 受験時の文理を選択してください（両方対応可能な場合は複数選択可） ※")
-            m_stream = st.multiselect("文理選択", ["文系", "理系"])
-            st.write("---")
-            st.write("▼ 対応可能な時間帯を選択 2026年1/6(火)~12(月)※")
-            m_available = st.multiselect("対応可能日時", TIME_SLOTS)
+            # 氏名は呼び出し時のものを固定表示（編集不可にしても良いが、誤字修正のために可とする）
+            m_name = st.text_input("氏名（大学生） ※", value=defaults["name"])
             
-            if st.form_submit_button("登録"):
+            st.write("▼ 受験時の文理を選択してください（両方対応可能な場合は複数選択可） ※")
+            m_stream = st.multiselect("文理選択", ["文系", "理系"], default=defaults["streams"])
+            
+            st.write("---")
+            st.write("▼ 対応可能な時間帯を選択 ※")
+            m_available = st.multiselect("対応可能日時", TIME_SLOTS, default=defaults["slots"])
+            
+            submit_label = "情報を更新する" if defaults["slots"] else "新規登録する"
+            
+            if st.form_submit_button(submit_label):
                 if m_name and m_available and m_stream:
                     df_m = load_data_from_sheet("mentors")
                     new_row = {
-                        "メンター氏名": m_name, "文理": ",".join(m_stream),
+                        "メンター氏名": m_name.strip(), 
+                        "文理": ",".join(m_stream), 
                         "可能日時": ",".join(m_available)
                     }
+                    
                     if not df_m.empty and "メンター氏名" in df_m.columns:
-                        df_m = df_m[df_m["メンター氏名"] != m_name]
+                        # 名前で検索して、既存があれば削除（上書き準備）
+                        df_m = df_m[df_m["メンター氏名"] != m_name.strip()]
                         df_m = pd.concat([df_m, pd.DataFrame([new_row])], ignore_index=True)
-                        st.success(f"{m_name} さんの情報を更新（上書き）しました！")
+                        action_msg = "更新（上書き）"
                     else:
                         df_m = pd.DataFrame([new_row])
-                        st.success(f"登録しました！ありがとうございます、{m_name}さん。")
+                        action_msg = "登録"
+                        
                     save_data_to_sheet(df_m, "mentors")
+                    st.success(f"✨ {m_name} さんの情報を{action_msg}しました！")
+                    
+                    # フォームの初期値をクリアしない（連続修正のため）または更新後の値にする
+                    st.session_state['mentor_form_defaults'] = {
+                        "name": m_name.strip(),
+                        "streams": m_stream,
+                        "slots": m_available
+                    }
                 else:
-                    st.error("「氏名」「文理」「日時」はすべて必須です。")
+                    st.error("⚠️ 「氏名」「文理」「日時」はすべて必須です。")
 
 # ※ ファイルの先頭に import random を追加してください
 import random 
