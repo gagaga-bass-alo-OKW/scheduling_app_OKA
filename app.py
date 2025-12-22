@@ -25,11 +25,11 @@ st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 # 📅 2. 時間枠設定 & グリッド表示関数
 # ==========================================
 # 定義：平日（月〜金）は夜のみ、土日は全日
-DAYS_WEEKDAY = ["月曜", "火曜", "水曜", "木曜", "金曜"]
+DAYS_WEEKDAY = ["1/6", "1/7", "1/8", "1/9", "1/10"]
 HOURS_WEEKDAY = range(20, 23)  # 20, 21, 22時台 (終了は23時)
 
-DAYS_WEEKEND = ["土曜", "日曜"]
-HOURS_WEEKEND = range(9, 23)   # 9〜22時台 (終了は23時)
+DAYS_WEEKEND = ["1/11", "1/12", "1/13"]
+HOURS_WEEKEND = range(10, 23)   # 9〜22時台 (終了は23時)
 
 # システム内部用の全スロットリスト生成
 TIME_SLOTS = []
