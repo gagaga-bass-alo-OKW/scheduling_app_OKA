@@ -24,14 +24,12 @@ st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 # ==========================================
 # 📅 2. 時間枠設定 & グリッド表示関数
 # ==========================================
-# 定義：平日（月〜金）は夜のみ、土日は全日
 DAYS_WEEKDAY = ["1/6", "1/7", "1/8", "1/9",]
-HOURS_WEEKDAY = range(20, 23)  # 20, 21, 22時台 (終了は23時)
+HOURS_WEEKDAY = range(20, 23)
 
-DAYS_WEEKEND = ["1/10", "1/11", "1/12",]
-HOURS_WEEKEND = range(10, 23)   # 9〜22時台 (終了は23時)
+DAYS_WEEKEND = ["1/10", "1/11","1/12"]
+HOURS_WEEKEND = range(10, 23)
 
-# システム内部用の全スロットリスト生成
 TIME_SLOTS = []
 for d in DAYS_WEEKDAY:
     for h in HOURS_WEEKDAY:
@@ -43,21 +41,15 @@ for d in DAYS_WEEKEND:
 DAY_ORDER = {"月曜": 0, "火曜": 1, "水曜": 2, "木曜": 3, "金曜": 4, "土曜": 5, "日曜": 6}
 
 def render_schedule_grid(default_selected=[], key_suffix=""):
-    """
-    平日と土日で分けた2つの表を表示し、選択結果を統合して返す
-    """
     st.write("▼ 以下の表で、可能な日時にチェック ✅ を入れてください")
     
-    # --- 1. 平日用の表 (20:00-23:00) ---
     st.markdown("**📅 平日 (20:00 〜 23:00)**")
     times_wd = [f"{h}:00-{h+1}:00" for h in HOURS_WEEKDAY]
     df_wd = pd.DataFrame(False, index=times_wd, columns=DAYS_WEEKDAY)
     
-    # --- 2. 土日用の表 (9:00-23:00) ---
     times_we = [f"{h}:00-{h+1}:00" for h in HOURS_WEEKEND]
     df_we = pd.DataFrame(False, index=times_we, columns=DAYS_WEEKEND)
 
-    # 既存データの反映
     for slot_str in default_selected:
         try:
             parts = slot_str.split(" ")
@@ -69,8 +61,6 @@ def render_schedule_grid(default_selected=[], key_suffix=""):
         except:
             pass
 
-    # --- 表示 & 入力 ---
-    # 平日グリッド
     edited_wd = st.data_editor(
         df_wd,
         column_config={day: st.column_config.CheckboxColumn(day, width="small") for day in DAYS_WEEKDAY},
@@ -79,25 +69,19 @@ def render_schedule_grid(default_selected=[], key_suffix=""):
     )
     
     st.markdown("**📅 土日祝 (10:00 〜 23:00)**")
-    # 土日グリッド
     edited_we = st.data_editor(
         df_we,
         column_config={day: st.column_config.CheckboxColumn(day, width="small") for day in DAYS_WEEKEND},
         use_container_width=True,
-        height=500, # 行数が多いので少し高く
+        height=500,
         key=f"grid_we_{key_suffix}"
     )
 
-    # --- 結果の統合 ---
     selected_slots = []
-    
-    # 平日の結果回収
     for t in edited_wd.index:
         for d in edited_wd.columns:
             if edited_wd.at[t, d]:
                 selected_slots.append(f"{d} {t}")
-                
-    # 土日の結果回収
     for t in edited_we.index:
         for d in edited_we.columns:
             if edited_we.at[t, d]:
@@ -127,6 +111,9 @@ def load_data_from_sheet(sheet_name):
             return pd.DataFrame()
         data = worksheet.get_all_records()
         df = pd.DataFrame(data)
+        # 数値などのパスワードが文字として扱われるように型変換
+        if "パスワード" in df.columns:
+            df["パスワード"] = df["パスワード"].astype(str)
         return df.fillna("")
     except Exception:
         return pd.DataFrame()
@@ -212,9 +199,7 @@ with tab1:
             st.write("---")
             s_questions = st.text_area("当日聞きたいことや相談したいことがあれば自由に書いてください")
             
-            # --- グリッド入力（2分割版） ---
             s_available = render_schedule_grid([], key_suffix="student")
-            # ---------------------------
 
             if st.form_submit_button("送信"):
                 required_fields = {"氏名": s_name, "LINE名": s_line_name, "学校名": s_school, "学年": s_grade, "文理選択": s_stream, "前回希望の有無": s_want_prev}
@@ -251,75 +236,106 @@ with tab2:
     else:
         st.write("ご協力ありがとうございます。")
         st.info("💡 **新規登録**も**修正**もここから行えます。")
-
-        col_search1, col_search2 = st.columns([3, 1])
+        
+        # 1. 氏名とパスワードで検索
+        st.markdown("##### 🔐 認証エリア")
+        col_search1, col_search2, col_search3 = st.columns([2, 2, 1])
         with col_search1:
-            input_name_query = st.text_input("あなたの氏名を入力してください", placeholder="例：東大 太郎")
+            input_name_query = st.text_input("氏名", placeholder="例：東大 太郎", key="m_search_name")
         with col_search2:
+            input_pass_query = st.text_input("パスワード", type="password", placeholder="自分用パスワード", key="m_search_pass")
+        with col_search3:
             st.write("")
             st.write("")
-            load_btn = st.button("データを呼び出す")
+            load_btn = st.button("呼出 / 新規")
 
         if 'mentor_form_defaults' not in st.session_state:
-            st.session_state['mentor_form_defaults'] = {"name": "", "streams": [], "slots": []}
-
-        if load_btn and input_name_query:
-            df_m_check = load_data_from_sheet("mentors")
-            target_data = pd.DataFrame()
-            if not df_m_check.empty and "メンター氏名" in df_m_check.columns:
-                target_data = df_m_check[df_m_check["メンター氏名"] == input_name_query.strip()]
-            
-            if not target_data.empty:
-                row = target_data.iloc[0]
-                existing_streams = row["文理"].split(",") if row["文理"] else []
-                existing_slots = row["可能日時"].split(",") if row["可能日時"] else []
-                st.session_state['mentor_form_defaults'] = {
-                    "name": row["メンター氏名"],
-                    "streams": existing_streams,
-                    "slots": existing_slots
-                }
-                st.success(f"✅ {input_name_query} さんの情報を読み込みました。")
+            st.session_state['mentor_form_defaults'] = {"name": "", "streams": [], "slots": [], "password": ""}
+        
+        # 呼び出し処理
+        if load_btn:
+            if not input_name_query or not input_pass_query:
+                st.error("氏名とパスワードの両方を入力してください。")
             else:
-                st.session_state['mentor_form_defaults'] = {
-                    "name": input_name_query.strip(),
-                    "streams": [],
-                    "slots": []
-                }
-                st.info(f"🆕 {input_name_query} さんのデータは見つかりませんでした。新規登録します。")
+                df_m_check = load_data_from_sheet("mentors")
+                target_data = pd.DataFrame()
+                
+                # 名前で検索
+                if not df_m_check.empty and "メンター氏名" in df_m_check.columns:
+                    target_data = df_m_check[df_m_check["メンター氏名"] == input_name_query.strip()]
+                
+                if not target_data.empty:
+                    # データあり -> パスワード照合
+                    row = target_data.iloc[0]
+                    # パスワード列がない場合や空の場合はスルーしてしまうか、エラーにするか
+                    stored_pass = str(row["パスワード"]) if "パスワード" in row else ""
+                    
+                    if stored_pass == input_pass_query.strip():
+                        existing_streams = row["文理"].split(",") if row["文理"] else []
+                        existing_slots = row["可能日時"].split(",") if row["可能日時"] else []
+                        st.session_state['mentor_form_defaults'] = {
+                            "name": row["メンター氏名"],
+                            "streams": existing_streams,
+                            "slots": existing_slots,
+                            "password": stored_pass
+                        }
+                        st.success(f"✅ {input_name_query} さんの情報を読み込みました。")
+                    else:
+                        st.error("❌ パスワードが違います。")
+                        # 認証失敗時はフォームをクリア
+                        st.session_state['mentor_form_defaults'] = {"name": "", "streams": [], "slots": [], "password": ""}
+                else:
+                    # データなし -> 新規登録として扱う
+                    st.session_state['mentor_form_defaults'] = {
+                        "name": input_name_query.strip(),
+                        "streams": [],
+                        "slots": [],
+                        "password": input_pass_query.strip() # 新規パスワードとして保持
+                    }
+                    st.info(f"🆕 {input_name_query} さんのデータはありませんでした。このパスワードで新規登録します。")
 
         st.write("---")
         defaults = st.session_state['mentor_form_defaults']
         
-        with st.form("mentor_form"):
-            m_name = st.text_input("氏名（大学生） ※", value=defaults["name"])
-            st.write("▼ 受験時の文理を選択してください ※")
-            m_stream = st.multiselect("文理選択", ["文系", "理系"], default=defaults["streams"])
-            st.write("---")
-            
-            # --- グリッド入力（2分割版） ---
-            m_available = render_schedule_grid(defaults["slots"], key_suffix="mentor")
-            # ---------------------------
-            
-            submit_label = "情報を更新する" if defaults["slots"] else "新規登録する"
-            
-            if st.form_submit_button(submit_label):
-                if m_name and m_available and m_stream:
-                    df_m = load_data_from_sheet("mentors")
-                    new_row = {"メンター氏名": m_name.strip(), "文理": ",".join(m_stream), "可能日時": ",".join(m_available)}
-                    
-                    if not df_m.empty and "メンター氏名" in df_m.columns:
-                        df_m = df_m[df_m["メンター氏名"] != m_name.strip()]
-                        df_m = pd.concat([df_m, pd.DataFrame([new_row])], ignore_index=True)
-                        action_msg = "更新（上書き）"
-                    else:
-                        df_m = pd.DataFrame([new_row])
-                        action_msg = "登録"
+        # フォーム表示（データがロードされているか、新規パスワードがセットされている場合のみ）
+        if defaults["name"]:
+            st.markdown(f"**編集中のユーザー: {defaults['name']}**")
+            with st.form("mentor_form"):
+                # 氏名は変更不可（キーにするため）
+                st.write(f"氏名: {defaults['name']}")
+                
+                st.write("▼ 受験時の文理を選択してください ※")
+                m_stream = st.multiselect("文理選択", ["文系", "理系"], default=defaults["streams"])
+                st.write("---")
+                
+                m_available = render_schedule_grid(defaults["slots"], key_suffix="mentor")
+                
+                submit_label = "情報を更新する"
+                
+                if st.form_submit_button(submit_label):
+                    if m_available and m_stream:
+                        df_m = load_data_from_sheet("mentors")
+                        new_row = {
+                            "メンター氏名": defaults["name"], 
+                            "文理": ",".join(m_stream), 
+                            "可能日時": ",".join(m_available),
+                            "パスワード": defaults["password"] # 読み込んだor新規入力したパスワードを保存
+                        }
                         
-                    save_data_to_sheet(df_m, "mentors")
-                    st.success(f"✨ {m_name} さんの情報を{action_msg}しました！")
-                    st.session_state['mentor_form_defaults'] = {"name": m_name.strip(), "streams": m_stream, "slots": m_available}
-                else:
-                    st.error("⚠️ 「氏名」「文理」「日時」はすべて必須です。")
+                        if not df_m.empty and "メンター氏名" in df_m.columns:
+                            df_m = df_m[df_m["メンター氏名"] != defaults["name"]]
+                            df_m = pd.concat([df_m, pd.DataFrame([new_row])], ignore_index=True)
+                            action_msg = "更新（上書き）"
+                        else:
+                            df_m = pd.DataFrame([new_row])
+                            action_msg = "登録"
+                            
+                        save_data_to_sheet(df_m, "mentors")
+                        st.success(f"✨ {defaults['name']} さんの情報を{action_msg}しました！次回も同じパスワードを使ってください。")
+                    else:
+                        st.error("⚠️ 「文理」「日時」は必須です。")
+        else:
+            st.caption("👈 左上のフォームに氏名とパスワードを入力して「呼出 / 新規」を押してください。")
 
 # --- Tab 3: 管理者用 ---
 with tab3:
@@ -407,8 +423,9 @@ with tab3:
                     # 3. メンター管理
                     with ad_tab3:
                         st.subheader("🎓 メンターデータの管理")
+                        st.info("※管理者権限でパスワードを上書き可能です")
                         with st.expander("📥 CSVファイルから一括登録"):
-                            m_dummy = pd.DataFrame(columns=["メンター氏名", "文理", "可能日時"])
+                            m_dummy = pd.DataFrame(columns=["メンター氏名", "文理", "可能日時", "パスワード"])
                             m_csv = m_dummy.to_csv(index=False).encode('utf-8-sig')
                             st.download_button("📄 テンプレート(CSV)をDL", m_csv, "mentor_template.csv", "text/csv")
                             m_file = st.file_uploader("メンターCSVをアップロード", type=["csv"])
@@ -417,6 +434,11 @@ with tab3:
                                 df_curr = load_data_from_sheet("mentors")
                                 up_names = df_m_up["メンター氏名"].astype(str).str.strip().tolist()
                                 df_m_up["メンター氏名"] = df_m_up["メンター氏名"].astype(str).str.strip()
+                                # パスワード列がない場合のケア
+                                if "パスワード" not in df_m_up.columns:
+                                    df_m_up["パスワード"] = "1234" # デフォルトパスワード
+                                    st.warning("パスワード列がなかったため、初期値「1234」を設定しました。")
+
                                 if not df_curr.empty:
                                     df_curr = df_curr[~df_curr["メンター氏名"].isin(up_names)]
                                     df_new = pd.concat([df_curr, df_m_up], ignore_index=True)
@@ -435,11 +457,13 @@ with tab3:
                                     safe_n = min(n_slots, len(TIME_SLOTS))
                                     picked_slots = random.sample(TIME_SLOTS, safe_n)
                                     dummy_mentors.append({
-                                        "メンター氏名": f"メンター{chr(65+i)}", "文理": random.choice(["文系", "理系"]),
-                                        "可能日時": ",".join(picked_slots)
+                                        "メンター氏名": f"メンター{chr(65+i)}", 
+                                        "文理": random.choice(["文系", "理系"]),
+                                        "可能日時": ",".join(picked_slots),
+                                        "パスワード": "1234" # ダミーデータのパスワード
                                     })
                                 save_data_to_sheet(pd.DataFrame(dummy_mentors), "mentors")
-                                st.success("生成完了")
+                                st.success("生成完了（パスワードは全員「1234」です）")
                         st.write("▼ 現在のデータ")
                         st.dataframe(load_data_from_sheet("mentors"))
 
