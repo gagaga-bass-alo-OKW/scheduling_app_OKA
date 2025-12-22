@@ -157,6 +157,7 @@ with tab1:
             st.write("---")
             s_questions = st.text_area("当日聞きたいことや相談したいことがあれば自由に書いてください")
             st.write("▼ **面談可能な**時間帯を選択（複数選択可） ※")
+            st.write("【受験生限定！】共通テスト直後にも面談を希望される方は、上の自由欄にその旨を回答ください"
             s_available = st.multiselect("面談可能日時", TIME_SLOTS)
 
             if st.form_submit_button("送信"):
