@@ -156,7 +156,7 @@ with tab1:
             s_request_mentor = st.text_input("その他、担当してほしい東大生がいれば名前を書いてください")
             st.write("---")
             s_questions = st.text_area("当日聞きたいことや相談したいことがあれば自由に書いてください")
-            st.write("▼ **面談可能な**時間帯を選択（複数選択可） ※")
+            st.write("▼ **面談可能な**時間帯を選択（複数選択可） 2026年1/5~11※")
             st.write("【受験生限定！】共通テスト直後にも面談を希望される方は、上の自由欄にその旨を回答ください")
             s_available = st.multiselect("面談可能日時", TIME_SLOTS)
 
@@ -204,7 +204,7 @@ with tab2:
             st.write("▼ 受験時の文理を選択してください（両方対応可能な場合は複数選択可） ※")
             m_stream = st.multiselect("文理選択", ["文系", "理系"])
             st.write("---")
-            st.write("▼ 対応可能な時間帯を選択 ※")
+            st.write("▼ 対応可能な時間帯を選択 2026年1/5~11※")
             m_available = st.multiselect("対応可能日時", TIME_SLOTS)
             
             if st.form_submit_button("登録"):
