@@ -27,13 +27,13 @@ st.markdown("""<meta name="robots" content="noindex, nofollow">""", unsafe_allow
 # 📅 2. 時間枠の自動生成
 # ==========================================
 TIME_SLOTS = []
-WEEKDAYS = ["月曜", "火曜", "水曜", "木曜", "金曜"]
+WEEKDAYS = ["1/6", "1/7", "1/8", "1/9"]
 WD_START, WD_END = 20, 23
 for day in WEEKDAYS:
     for hour in range(WD_START, WD_END):
         TIME_SLOTS.append(f"{day} {hour}:00-{hour+1}:00")
 
-WEEKENDS = ["土曜", "日曜"]
+WEEKENDS = ["1/10", "1/11","1/12"]
 WE_START, WE_END = 9, 23
 for day in WEEKENDS:
     for hour in range(WE_START, WE_END):
@@ -156,7 +156,7 @@ with tab1:
             s_request_mentor = st.text_input("その他、担当してほしい東大生がいれば名前を書いてください")
             st.write("---")
             s_questions = st.text_area("当日聞きたいことや相談したいことがあれば自由に書いてください")
-            st.write("▼ **面談可能な**時間帯を選択（複数選択可） 2026年1/5~11※")
+            st.write("▼ **面談可能な**時間帯を選択（複数選択可） 2026年1/6(火)~12(月)※")
             st.write("【受験生限定！】共通テスト直後にも面談を希望される方は、上の自由欄にその旨を回答ください")
             s_available = st.multiselect("面談可能日時", TIME_SLOTS)
 
