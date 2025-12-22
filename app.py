@@ -10,67 +10,98 @@ import random
 # ==========================================
 st.set_page_config(page_title="ALOHA面談日程調整", layout="wide")
 st.markdown("""<meta name="robots" content="noindex, nofollow">""", unsafe_allow_html=True)
-import streamlit.components.v1 as components
+
+# CSSでメニュー非表示
+hide_streamlit_style = """
+            <style>
+            #MainMenu {visibility: hidden;}
+            footer {visibility: hidden;}
+            header {visibility: hidden;}
+            </style>
+            """
+st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
 # ==========================================
 # 📅 2. 時間枠設定 & グリッド表示関数
 # ==========================================
-# グリッドの行（時間）と列（曜日）の定義
-GRID_TIMES = [f"{h}:00-{h+1}:00" for h in range(9, 23)] # 9時から23時まで行を用意
-GRID_DAYS = ["月曜", "火曜", "水曜", "木曜", "金曜", "土曜", "日曜"]
+# 定義：平日（月〜金）は夜のみ、土日は全日
+DAYS_WEEKDAY = ["月曜", "火曜", "水曜", "木曜", "金曜"]
+HOURS_WEEKDAY = range(20, 23)  # 20, 21, 22時台 (終了は23時)
 
-# 従来のTIME_SLOTSリストも生成（裏側でのデータ処理用）
+DAYS_WEEKEND = ["土曜", "日曜"]
+HOURS_WEEKEND = range(9, 23)   # 9〜22時台 (終了は23時)
+
+# システム内部用の全スロットリスト生成
 TIME_SLOTS = []
-# 平日設定
-for day in ["月曜", "火曜", "水曜", "木曜", "金曜"]:
-    for hour in range(20, 23): # 20-23時
-        TIME_SLOTS.append(f"{day} {hour}:00-{hour+1}:00")
-# 土日設定
-for day in ["土曜", "日曜"]:
-    for hour in range(9, 23): # 9-23時
-        TIME_SLOTS.append(f"{day} {hour}:00-{hour+1}:00")
+for d in DAYS_WEEKDAY:
+    for h in HOURS_WEEKDAY:
+        TIME_SLOTS.append(f"{d} {h}:00-{h+1}:00")
+for d in DAYS_WEEKEND:
+    for h in HOURS_WEEKEND:
+        TIME_SLOTS.append(f"{d} {h}:00-{h+1}:00")
 
 DAY_ORDER = {"月曜": 0, "火曜": 1, "水曜": 2, "木曜": 3, "金曜": 4, "土曜": 5, "日曜": 6}
 
 def render_schedule_grid(default_selected=[], key_suffix=""):
     """
-    時間割形式のデータエディタを表示し、選択されたスロットのリストを返す関数
+    平日と土日で分けた2つの表を表示し、選択結果を統合して返す
     """
     st.write("▼ 以下の表で、可能な日時にチェック ✅ を入れてください")
     
-    # 1. 空のデータフレーム作成（行＝時間、列＝曜日、値＝False）
-    df_grid = pd.DataFrame(False, index=GRID_TIMES, columns=GRID_DAYS)
+    # --- 1. 平日用の表 (20:00-23:00) ---
+    st.markdown("**📅 平日 (20:00 〜 23:00)**")
+    times_wd = [f"{h}:00-{h+1}:00" for h in HOURS_WEEKDAY]
+    df_wd = pd.DataFrame(False, index=times_wd, columns=DAYS_WEEKDAY)
     
-    # 2. 既存の選択データがあればTrueにする（編集時など）
+    # --- 2. 土日用の表 (9:00-23:00) ---
+    times_we = [f"{h}:00-{h+1}:00" for h in HOURS_WEEKEND]
+    df_we = pd.DataFrame(False, index=times_we, columns=DAYS_WEEKEND)
+
+    # 既存データの反映
     for slot_str in default_selected:
         try:
-            # "月曜 20:00-21:00" を分解
             parts = slot_str.split(" ")
-            d = parts[0]
-            t = parts[1]
-            if d in df_grid.columns and t in df_grid.index:
-                df_grid.at[t, d] = True
+            d, t = parts[0], parts[1]
+            if d in DAYS_WEEKDAY and t in times_wd:
+                df_wd.at[t, d] = True
+            elif d in DAYS_WEEKEND and t in times_we:
+                df_we.at[t, d] = True
         except:
             pass
 
-    # 3. データエディタ表示
-    edited_df = st.data_editor(
-        df_grid,
-        column_config={day: st.column_config.CheckboxColumn(day, width="small") for day in GRID_DAYS},
+    # --- 表示 & 入力 ---
+    # 平日グリッド
+    edited_wd = st.data_editor(
+        df_wd,
+        column_config={day: st.column_config.CheckboxColumn(day, width="small") for day in DAYS_WEEKDAY},
         use_container_width=True,
-        height=400, # 高さを調整
-        key=f"grid_editor_{key_suffix}"
+        key=f"grid_wd_{key_suffix}"
+    )
+    
+    st.markdown("**📅 土日 (9:00 〜 23:00)**")
+    # 土日グリッド
+    edited_we = st.data_editor(
+        df_we,
+        column_config={day: st.column_config.CheckboxColumn(day, width="small") for day in DAYS_WEEKEND},
+        use_container_width=True,
+        height=500, # 行数が多いので少し高く
+        key=f"grid_we_{key_suffix}"
     )
 
-    # 4. 選択されたセルを文字列リストに戻す
+    # --- 結果の統合 ---
     selected_slots = []
-    for time_row in edited_df.index:
-        for day_col in edited_df.columns:
-            if edited_df.at[time_row, day_col]:
-                # アプリの有効な時間帯設定(TIME_SLOTS)に含まれているかチェック
-                # 含まれていなくても入力自体は許可するが、マッチングロジック上はTIME_SLOTSにあるものが優先される
-                slot_str = f"{day_col} {time_row}"
-                selected_slots.append(slot_str)
+    
+    # 平日の結果回収
+    for t in edited_wd.index:
+        for d in edited_wd.columns:
+            if edited_wd.at[t, d]:
+                selected_slots.append(f"{d} {t}")
+                
+    # 土日の結果回収
+    for t in edited_we.index:
+        for d in edited_we.columns:
+            if edited_we.at[t, d]:
+                selected_slots.append(f"{d} {t}")
     
     return selected_slots
 
@@ -142,16 +173,6 @@ is_accepting = get_status()
 # ==========================================
 # 🖥️ 4. アプリ画面構成
 # ==========================================
-# CSSでメニュー非表示
-hide_streamlit_style = """
-            <style>
-            #MainMenu {visibility: hidden;}
-            footer {visibility: hidden;}
-            header {visibility: hidden;}
-            </style>
-            """
-st.markdown(hide_streamlit_style, unsafe_allow_html=True)
-
 st.title("📅 ALOHA面談日程調整")
 
 if is_accepting:
@@ -191,8 +212,7 @@ with tab1:
             st.write("---")
             s_questions = st.text_area("当日聞きたいことや相談したいことがあれば自由に書いてください")
             
-            # --- ここをグリッド入力に変更 ---
-            # s_available = st.multiselect("面談可能日時", TIME_SLOTS)
+            # --- グリッド入力（2分割版） ---
             s_available = render_schedule_grid([], key_suffix="student")
             # ---------------------------
 
@@ -200,7 +220,6 @@ with tab1:
                 required_fields = {"氏名": s_name, "LINE名": s_line_name, "学校名": s_school, "学年": s_grade, "文理選択": s_stream, "前回希望の有無": s_want_prev}
                 missing_fields = [k for k, v in required_fields.items() if not v]
                 
-                # 日時は別途チェック
                 if not s_available:
                     missing_fields.append("面談可能日時")
 
@@ -277,8 +296,7 @@ with tab2:
             m_stream = st.multiselect("文理選択", ["文系", "理系"], default=defaults["streams"])
             st.write("---")
             
-            # --- ここをグリッド入力に変更 ---
-            # m_available = st.multiselect("対応可能日時", TIME_SLOTS, default=defaults["slots"])
+            # --- グリッド入力（2分割版） ---
             m_available = render_schedule_grid(defaults["slots"], key_suffix="mentor")
             # ---------------------------
             
