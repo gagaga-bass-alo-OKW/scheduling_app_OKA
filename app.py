@@ -187,7 +187,7 @@ with tab1:
             with col1:
                 s_name_input = st.text_input("氏名（本名） ※")
                 s_name = s_name_input.strip() if s_name_input else ""
-                s_line_name = st.text_input("公式LINEでのあなたの名前（表示名） ※")
+                s_line_name = st.text_input("LINEでのあなたの名前（表示名） 必ずALOHAのLINEを追加すること！※")
                 s_school = st.text_input("学校名 ※")
             with col2:
                 s_grade = st.selectbox("学年 ※", ["中1", "中2", "中3", "高1", "高2", "高3"], index=None, placeholder="選択してください")
