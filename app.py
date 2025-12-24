@@ -197,7 +197,7 @@ with tab1:
             s_want_prev = st.radio("前回の担当者と同じ人を希望しますか？ ※", ["希望する", "希望しない"], index=None, horizontal=True)
             s_request_mentor = st.text_input("その他、担当してほしい東大生がいれば名前を書いてください")
             st.write("---")
-            s_questions = st.text_area("当日聞きたいことや相談したいことを自由に書いてください")
+            s_questions = st.text_area("当日聞きたいことや相談したいことを自由に書いてください ※")
             st.write("例: 参考書紹介、東大での生活、東大生の中学/高校〇年の時の過ごし方、進級に向けて、等")
             
             s_available = render_schedule_grid([], key_suffix="student")
