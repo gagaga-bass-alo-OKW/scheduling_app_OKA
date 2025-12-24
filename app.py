@@ -197,13 +197,13 @@ with tab1:
             s_want_prev = st.radio("前回の担当者と同じ人を希望しますか？ ※", ["希望する", "希望しない"], index=None, horizontal=True)
             s_request_mentor = st.text_input("その他、担当してほしい東大生がいれば名前を書いてください")
             st.write("---")
-            s_questions = st.text_area("当日聞きたいことや相談したいことがあれば自由に書いてください")
+            s_questions = st.text_area("当日聞きたいことや相談したいことを自由に書いてください")
             st.write("例: 参考書紹介、東大での生活、東大生の中学/高校〇年の時の過ごし方、進級に向けて、等")
             
             s_available = render_schedule_grid([], key_suffix="student")
 
             if st.form_submit_button("送信"):
-                required_fields = {"氏名": s_name, "LINE名": s_line_name, "学校名": s_school, "学年": s_grade, "文理選択": s_stream, "前回希望の有無": s_want_prev}
+                required_fields = {"氏名": s_name, "LINE名": s_line_name, "学校名": s_school, "学年": s_grade, "文理選択": s_stream, "前回希望の有無": s_want_prev, "当日聞きたいことや相談したいことを自由に書いてください":s_questions}
                 missing_fields = [k for k, v in required_fields.items() if not v]
                 
                 if not s_available:
@@ -222,7 +222,7 @@ with tab1:
                     if not df_s.empty and "生徒氏名" in df_s.columns:
                         df_s = df_s[df_s["生徒氏名"] != s_name]
                         df_s = pd.concat([df_s, pd.DataFrame([new_row])], ignore_index=True)
-                        st.success(f"{s_name} さんの情報を更新（上書き）しました！")
+                        st.success(f"{s_name} さんの情報を登録（上書き）しました！")
                     else:
                         df_s = pd.DataFrame([new_row])
                         st.success(f"保存しました！ありがとうございます、{s_name}さん。")
