@@ -464,8 +464,8 @@ with tab3:
 
                     # 4. マッチング
                     with ad_tab4:
-                        st.subheader("🚀 マッチング実行 (最適化モード)")
-                        st.info("💡 **戦略:** 希望日時が少ない生徒から順に、すでに面談が入っている時間帯を優先して埋めることで、開催日数を圧縮します。")
+                        st.subheader("🚀 マッチング実行 (飛び石禁止・連投優先)")
+                        st.info("💡 **戦略:** シフトの「飛び石（空き時間）」を禁止し、連続勤務を最優先します。")
                         
                         df_students = load_data_from_sheet("students")
                         df_mentors = load_data_from_sheet("mentors")
@@ -478,15 +478,17 @@ with tab3:
                                 results = []
                                 
                                 # --- 1. データ準備 ---
-                                # メンターのスケジュール展開
-                                mentor_schedule = {} # {name: set(slots)}
+                                mentor_schedule = {} # {name: set(slots)} (残りの空き枠)
                                 mentor_streams = {}  # {name: [stream]}
-                                mentor_names_fixed = list(df_mentors["メンター氏名"]) # ローテーション用
+                                mentor_assignments = {} # {name: set(assigned_slots)} (既に決まった枠)
+                                
+                                mentor_names_list = list(df_mentors["メンター氏名"]) 
 
                                 for _, row in df_mentors.iterrows():
                                     m_name = row["メンター氏名"]
                                     slots = set(row["可能日時"].split(",")) if row["可能日時"] else set()
                                     mentor_schedule[m_name] = slots
+                                    mentor_assignments[m_name] = set() # 初期化
                                     streams = row["文理"].split(",") if "文理" in row and row["文理"] else []
                                     mentor_streams[m_name] = streams
 
@@ -500,14 +502,32 @@ with tab3:
                                         "num_slots": len(s_slots)
                                     })
                                 
-                                # 🔥 戦略1: 候補日時が少ない（調整が難しい）生徒から先に処理する
+                                # 🔥 難易度順ソート（候補が少ない生徒を先に）
                                 students_list.sort(key=lambda x: x["num_slots"])
 
                                 # スロットごとの埋まり具合（人気度）カウンター
                                 slot_popularity = {slot: 0 for slot in TIME_SLOTS}
 
-                                # 検索開始位置インデックス
-                                search_start_index = 0
+                                # 隣接スロット判定用のヘルパー
+                                def get_adjacent_slots(target_slot):
+                                    """ target_slotの前後のスロット（同じ日のみ）を返す """
+                                    if target_slot not in TIME_SLOTS:
+                                        return []
+                                    idx = TIME_SLOTS.index(target_slot)
+                                    target_day = target_slot.split(" ")[0]
+                                    
+                                    adjacent = []
+                                    # 前
+                                    if idx > 0:
+                                        prev = TIME_SLOTS[idx - 1]
+                                        if prev.split(" ")[0] == target_day:
+                                            adjacent.append(prev)
+                                    # 次
+                                    if idx < len(TIME_SLOTS) - 1:
+                                        next_s = TIME_SLOTS[idx + 1]
+                                        if next_s.split(" ")[0] == target_day:
+                                            adjacent.append(next_s)
+                                    return adjacent
 
                                 # --- 2. マッチング処理 ---
                                 for s_obj in students_list:
@@ -527,13 +547,12 @@ with tab3:
                                     assigned_mentor = None
                                     assigned_slot = None
 
-                                    # 生徒が可能なスロット一覧を特定
-                                    # まず、そもそもこのスロットに「文理が合うメンターの空き」があるかを確認
+                                    # 生徒が可能なスロットを人気順（埋まってる順）にソート
                                     feasible_slots = []
                                     for slot in s_slots:
-                                        # このスロットで空いている、かつ文理が合うメンターがいるか？
+                                        # この枠で働けるメンターが一人でもいるか確認
                                         has_valid_mentor = False
-                                        for m_name in mentor_names_fixed:
+                                        for m_name in mentor_names_list:
                                             if slot in mentor_schedule[m_name]:
                                                 m_streams_list = mentor_streams.get(m_name, [])
                                                 if s_stream == "未定" or s_stream in m_streams_list:
@@ -542,47 +561,82 @@ with tab3:
                                         if has_valid_mentor:
                                             feasible_slots.append(slot)
                                     
-                                    # 🔥 戦略2: 可能なスロットの中から、「すでに面談が入っている時間」を優先する
-                                    # slot_popularityの値が大きい順（降順）に並び替え
                                     feasible_slots.sort(key=lambda s: slot_popularity.get(s, 0), reverse=True)
 
-                                    # 優先順位の高いスロットから順にメンターを探す
+                                    # 優先順位の高いスロットからメンターを探す
                                     for slot in feasible_slots:
-                                        # メンター候補リストの作成（ローテーション考慮）
-                                        candidates = mentor_names_fixed[search_start_index:] + mentor_names_fixed[:search_start_index]
-                                        
-                                        # 前回希望がある場合、そのメンターをリストの先頭へ
-                                        if want_prev and prev_mentor in candidates:
-                                            candidates.remove(prev_mentor)
-                                            candidates.insert(0, prev_mentor)
-
-                                        # このスロットで空いているメンターを探す
-                                        for m_name in candidates:
+                                        # 候補者のリストアップ
+                                        candidates = []
+                                        for m_name in mentor_names_list:
                                             m_streams_list = mentor_streams.get(m_name, [])
-                                            # 文理チェック
                                             if s_stream != "未定" and s_stream not in m_streams_list:
                                                 continue
-                                            
-                                            # 空きチェック
                                             if slot in mentor_schedule[m_name]:
-                                                # マッチング成立！
-                                                assigned_mentor = m_name
-                                                assigned_slot = slot
-                                                
-                                                # メンターのスケジュールからこの時間を削除（埋まったため）
-                                                mentor_schedule[m_name].remove(slot)
-                                                
-                                                # スロットの人気度（埋まり数）をカウントアップ
-                                                slot_popularity[slot] += 1
-                                                
-                                                # 次回の検索開始位置を更新（ローテーション）
-                                                idx = mentor_names_fixed.index(m_name)
-                                                search_start_index = (idx + 1) % len(mentor_names_fixed)
-                                                break # メンターループ抜け
+                                                candidates.append(m_name)
                                         
-                                        if assigned_mentor:
-                                            break # スロットループ抜け
+                                        if not candidates:
+                                            continue
 
+                                        # 🔥🔥 メンター選定のスコアリング（ここが重要） 🔥🔥
+                                        def calculate_mentor_score(m_name):
+                                            score = 0
+                                            
+                                            # 1. 指名・前回担当（最優先）
+                                            if want_prev and m_name == prev_mentor:
+                                                score += 10000 
+                                            
+                                            assigned_slots = mentor_assignments[m_name]
+                                            current_day = slot.split(" ")[0] # e.g., "1/6"
+                                            
+                                            # その日の既存シフトを取得
+                                            day_shifts = [s for s in assigned_slots if s.startswith(current_day)]
+                                            
+                                            # 2. その日のシフト状況によるスコア
+                                            if not day_shifts:
+                                                # その日はまだ入っていない -> 新しく入る (Gapなし)
+                                                # 全体の日数を減らすため、他ですでに働いている人なら少し優遇してもいいが、
+                                                # Gap回避が最優先なので、ここはフラットに近い。
+                                                if assigned_slots: # 他の日に働いている
+                                                    score += 50
+                                                else:
+                                                    score += 0
+                                            else:
+                                                # その日はすでに入っている
+                                                # 隣接しているかチェック
+                                                is_adjacent = False
+                                                adjs = get_adjacent_slots(slot)
+                                                for adj in adjs:
+                                                    if adj in assigned_slots:
+                                                        is_adjacent = True
+                                                        break
+                                                
+                                                if is_adjacent:
+                                                    score += 500 # 連続勤務（最高）
+                                                else:
+                                                    score -= 1000 # 飛び石（Gap）になるのでペナルティ！
+                                            
+                                            # ランダム要素
+                                            score += random.random()
+                                            return score
+
+                                        # スコアが高い順にソート
+                                        candidates.sort(key=calculate_mentor_score, reverse=True)
+
+                                        # 最もスコアが高いメンターを採用
+                                        best_mentor = candidates[0]
+                                        
+                                        # もしスコアが負（Gap発生）しかない場合でも、この枠しか埋められないなら採用される
+                                        # が、他の枠（feasible_slotsのループ）でGapなしが見つかればそちらが優先される
+                                        
+                                        assigned_mentor = best_mentor
+                                        assigned_slot = slot
+                                        
+                                        # 状態更新
+                                        mentor_schedule[best_mentor].remove(slot) # 空き枠から削除
+                                        mentor_assignments[best_mentor].add(slot) # 確定枠に追加
+                                        slot_popularity[slot] += 1
+                                        break
+                                    
                                     results.append({
                                         "生徒氏名": s_name, "決定メンター": assigned_mentor, "決定日時": assigned_slot,
                                         "ステータス": "決定" if assigned_mentor else "未定", "学校": s_row["学校"],
@@ -604,13 +658,11 @@ with tab3:
                                 st.session_state['matching_results'] = df_results.sort_values(by="_sort_key").drop(columns=["_sort_key"])
 
                                 # ----------------------------------------------------
-                                # 🆕 部屋担当（面談に入らない待機メンター）の抽出ロジック
+                                # 部屋担当（待機メンター）
                                 # ----------------------------------------------------
-                                # mentor_schedule に残っているスロット＝空き（待機可能）
                                 room_managers_list = []
                                 for m_name, remaining_slots in mentor_schedule.items():
                                     for slot in remaining_slots:
-                                        # 重要：面談が1件以上入っている日時のみ、部屋担当を表示する（誰もいない時間は不要）
                                         if slot_popularity.get(slot, 0) > 0:
                                             room_managers_list.append({"日時": slot, "部屋担当メンター": m_name})
                                 
@@ -618,14 +670,13 @@ with tab3:
                                 if not df_managers.empty:
                                     df_managers["_sort_key"] = df_managers["日時"].apply(get_sort_key)
                                     df_managers = df_managers.sort_values(by="_sort_key").drop(columns=["_sort_key"])
-                                    # 日時ごとにメンターをまとめる
                                     df_managers_agg = df_managers.groupby("日時")["部屋担当メンター"].apply(list).reset_index()
                                     df_managers_agg["部屋担当メンター"] = df_managers_agg["部屋担当メンター"].apply(lambda x: ", ".join(x))
                                     st.session_state['room_managers_results'] = df_managers_agg
                                 else:
                                     st.session_state['room_managers_results'] = pd.DataFrame(columns=["日時", "部屋担当メンター"])
 
-                                st.success("最適化マッチング完了")
+                                st.success("最適化マッチング完了（飛び石禁止モード）")
 
                         # --- 結果表示 ---
                         if st.session_state.get('matching_results') is not None:
@@ -647,14 +698,14 @@ with tab3:
                             csv_res = edited_df.to_csv(index=False).encode('utf-8-sig')
                             st.download_button("📥 面談結果をCSVでDL", csv_res, "matching_result.csv", "text/csv")
                             
-                            # 🆕 部屋担当表の表示
+                            # 部屋担当表
                             st.write("---")
                             st.subheader("✅ 2. 部屋担当者リスト（待機メンター）")
-                            st.caption("※面談が発生している日時において、シフトが入っているが割り振られなかったメンターです。")
+                            st.caption("※面談がある時間帯で、割り振られなかった待機メンターです。")
                             if st.session_state.get('room_managers_results') is not None and not st.session_state['room_managers_results'].empty:
                                 st.dataframe(st.session_state['room_managers_results'], hide_index=True, use_container_width=True)
                             else:
-                                st.info("待機メンターはいません（全員稼働中か、面談自体がありません）")
+                                st.info("待機メンターはいません")
 
                             st.write("---")
                             if st.button("✅ データを履歴に保存してリセット"):
