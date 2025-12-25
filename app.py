@@ -267,7 +267,6 @@ with tab2:
                 if not target_data.empty:
                     # データあり -> パスワード照合
                     row = target_data.iloc[0]
-                    # パスワード列がない場合や空の場合はスルーしてしまうか、エラーにするか
                     stored_pass = str(row["パスワード"]) if "パスワード" in row else ""
                     
                     if stored_pass == input_pass_query.strip():
@@ -282,7 +281,6 @@ with tab2:
                         st.success(f"✅ {input_name_query} さんの情報を読み込みました。")
                     else:
                         st.error("❌ パスワードが違います。")
-                        # 認証失敗時はフォームをクリア
                         st.session_state['mentor_form_defaults'] = {"name": "", "streams": [], "slots": [], "password": ""}
                 else:
                     # データなし -> 新規登録として扱う
@@ -290,20 +288,18 @@ with tab2:
                         "name": input_name_query.strip(),
                         "streams": [],
                         "slots": [],
-                        "password": input_pass_query.strip() # 新規パスワードとして保持
+                        "password": input_pass_query.strip()
                     }
                     st.info(f"🆕 {input_name_query} さんのデータはありませんでした。このパスワードで新規登録します。")
 
         st.write("---")
         defaults = st.session_state['mentor_form_defaults']
         
-        # フォーム表示（データがロードされているか、新規パスワードがセットされている場合のみ）
+        # フォーム表示
         if defaults["name"]:
             st.markdown(f"**編集中のユーザー: {defaults['name']}**")
             with st.form("mentor_form"):
-                # 氏名は変更不可（キーにするため）
                 st.write(f"氏名: {defaults['name']}")
-                
                 st.write("▼ 受験時の文理を選択してください ※")
                 m_stream = st.multiselect("文理選択", ["文系", "理系"], default=defaults["streams"])
                 st.write("---")
@@ -319,7 +315,7 @@ with tab2:
                             "メンター氏名": defaults["name"], 
                             "文理": ",".join(m_stream), 
                             "可能日時": ",".join(m_available),
-                            "パスワード": defaults["password"] # 読み込んだor新規入力したパスワードを保存
+                            "パスワード": defaults["password"]
                         }
                         
                         if not df_m.empty and "メンター氏名" in df_m.columns:
@@ -434,9 +430,8 @@ with tab3:
                                 df_curr = load_data_from_sheet("mentors")
                                 up_names = df_m_up["メンター氏名"].astype(str).str.strip().tolist()
                                 df_m_up["メンター氏名"] = df_m_up["メンター氏名"].astype(str).str.strip()
-                                # パスワード列がない場合のケア
                                 if "パスワード" not in df_m_up.columns:
-                                    df_m_up["パスワード"] = "1234" # デフォルトパスワード
+                                    df_m_up["パスワード"] = "1234"
                                     st.warning("パスワード列がなかったため、初期値「1234」を設定しました。")
 
                                 if not df_curr.empty:
@@ -460,7 +455,7 @@ with tab3:
                                         "メンター氏名": f"メンター{chr(65+i)}", 
                                         "文理": random.choice(["文系", "理系"]),
                                         "可能日時": ",".join(picked_slots),
-                                        "パスワード": "1234" # ダミーデータのパスワード
+                                        "パスワード": "1234"
                                     })
                                 save_data_to_sheet(pd.DataFrame(dummy_mentors), "mentors")
                                 st.success("生成完了（パスワードは全員「1234」です）")
@@ -484,17 +479,11 @@ with tab3:
                                 
                                 mentor_schedule = {} 
                                 mentor_streams = {}  
-                                mentor_original_availability = {}
 
                                 for _, row in df_mentors.iterrows():
                                     m_name = row["メンター氏名"]
                                     slots = set(row["可能日時"].split(",")) if row["可能日時"] else set()
                                     mentor_schedule[m_name] = slots
-                                    for s in slots:
-                                        day = s.split(" ")[0]
-                                        if day not in mentor_original_availability:
-                                            mentor_original_availability[day] = []
-                                        mentor_original_availability[day].append(m_name)
                                     streams = row["文理"].split(",") if "文理" in row and row["文理"] else []
                                     mentor_streams[m_name] = streams
 
@@ -513,7 +502,6 @@ with tab3:
                                             prev_mentor = hist.iloc[-1]["前回担当メンター"]
                                     
                                     # --- 候補リストの生成（回転ロジック） ---
-                                    # search_start_indexから後ろ + 先頭からsearch_start_indexまで
                                     if mentor_names_fixed:
                                         candidates = mentor_names_fixed[search_start_index:] + mentor_names_fixed[:search_start_index]
                                     else:
@@ -535,6 +523,7 @@ with tab3:
                                             slot = list(common)[0]
                                             assigned_mentor = m_name
                                             assigned_slot = slot
+                                            # スケジュールから削除（確定）
                                             mentor_schedule[m_name].remove(slot)
                                             
                                             # --- 次回の検索開始位置を更新 ---
@@ -550,6 +539,7 @@ with tab3:
                                         "前回担当メンター": assigned_mentor if assigned_mentor else ""
                                     })
                                 
+                                # 結果保存
                                 df_results = pd.DataFrame(results)
                                 def get_sort_key(val):
                                     if not val or pd.isna(val) or val == "None" or not isinstance(val, str): return (99, 99)
@@ -561,12 +551,35 @@ with tab3:
                                     except: return (99, 99)
                                 df_results["_sort_key"] = df_results["決定日時"].apply(get_sort_key)
                                 st.session_state['matching_results'] = df_results.sort_values(by="_sort_key").drop(columns=["_sort_key"])
-                                st.success("完了")
 
+                                # ----------------------------------------------------
+                                # 🆕 部屋担当（面談に入らない待機メンター）の抽出ロジック
+                                # ----------------------------------------------------
+                                # mentor_schedule に残っているスロット＝空き（待機可能）
+                                room_managers_list = []
+                                for m_name, remaining_slots in mentor_schedule.items():
+                                    for slot in remaining_slots:
+                                        room_managers_list.append({"日時": slot, "部屋担当メンター": m_name})
+                                
+                                df_managers = pd.DataFrame(room_managers_list)
+                                if not df_managers.empty:
+                                    df_managers["_sort_key"] = df_managers["日時"].apply(get_sort_key)
+                                    df_managers = df_managers.sort_values(by="_sort_key").drop(columns=["_sort_key"])
+                                    # 日時ごとにメンターをまとめる
+                                    df_managers_agg = df_managers.groupby("日時")["部屋担当メンター"].apply(list).reset_index()
+                                    df_managers_agg["部屋担当メンター"] = df_managers_agg["部屋担当メンター"].apply(lambda x: ", ".join(x))
+                                    st.session_state['room_managers_results'] = df_managers_agg
+                                else:
+                                    st.session_state['room_managers_results'] = pd.DataFrame(columns=["日時", "部屋担当メンター"])
+
+                                st.success("マッチング＆部屋担当割り振り完了")
+
+                        # --- 結果表示 ---
                         if st.session_state.get('matching_results') is not None:
                             st.write("---")
-                            st.subheader("✅ マッチング結果の編集")
+                            st.subheader("✅ 1. 面談マッチング結果")
                             all_mentors = df_mentors["メンター氏名"].unique().tolist() if not df_mentors.empty else []
+                            
                             edited_df = st.data_editor(
                                 st.session_state['matching_results'],
                                 column_config={
@@ -577,9 +590,19 @@ with tab3:
                                 hide_index=True, num_rows="fixed", key="matching_editor_tab4"
                             )
                             st.session_state['matching_results'] = edited_df
-                            csv_res = edited_df.to_csv(index=False).encode('utf-8-sig')
-                            st.download_button("📥 結果CSVをダウンロード", csv_res, "matching_result.csv", "text/csv")
                             
+                            csv_res = edited_df.to_csv(index=False).encode('utf-8-sig')
+                            st.download_button("📥 面談結果をCSVでDL", csv_res, "matching_result.csv", "text/csv")
+                            
+                            # 🆕 部屋担当表の表示
+                            st.write("---")
+                            st.subheader("✅ 2. 部屋担当者リスト（待機メンター）")
+                            st.caption("※この時間帯にシフトを入れていますが、面談が割り振られなかったメンターです。")
+                            if st.session_state.get('room_managers_results') is not None and not st.session_state['room_managers_results'].empty:
+                                st.dataframe(st.session_state['room_managers_results'], hide_index=True, use_container_width=True)
+                            else:
+                                st.info("待機メンターはいません（全員稼働中かシフトなし）")
+
                             st.write("---")
                             if st.button("✅ データを履歴に保存してリセット"):
                                 final_data = st.session_state['matching_results']
@@ -589,6 +612,7 @@ with tab3:
                                 save_data_to_sheet(pd.DataFrame(), "students")
                                 save_data_to_sheet(pd.DataFrame(), "mentors")
                                 st.session_state['matching_results'] = None
+                                st.session_state['room_managers_results'] = None
                                 set_status(False)
                                 st.success("完了しました")
                                 time.sleep(1)
