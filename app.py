@@ -464,7 +464,9 @@ with tab3:
 
                     # 4. マッチング
                     with ad_tab4:
-                        st.subheader("🚀 マッチング実行")
+                        st.subheader("🚀 マッチング実行 (最適化モード)")
+                        st.info("💡 **戦略:** 希望日時が少ない生徒から順に、すでに面談が入っている時間帯を優先して埋めることで、開催日数を圧縮します。")
+                        
                         df_students = load_data_from_sheet("students")
                         df_mentors = load_data_from_sheet("mentors")
                         df_history = load_data_from_sheet("history")
@@ -474,11 +476,12 @@ with tab3:
                                 st.error("データ不足")
                             else:
                                 results = []
-                                # メンター名を固定リスト化してローテーションに使用
-                                mentor_names_fixed = list(df_mentors["メンター氏名"])
                                 
-                                mentor_schedule = {} 
-                                mentor_streams = {}  
+                                # --- 1. データ準備 ---
+                                # メンターのスケジュール展開
+                                mentor_schedule = {} # {name: set(slots)}
+                                mentor_streams = {}  # {name: [stream]}
+                                mentor_names_fixed = list(df_mentors["メンター氏名"]) # ローテーション用
 
                                 for _, row in df_mentors.iterrows():
                                     m_name = row["メンター氏名"]
@@ -487,51 +490,99 @@ with tab3:
                                     streams = row["文理"].split(",") if "文理" in row and row["文理"] else []
                                     mentor_streams[m_name] = streams
 
+                                # 生徒データの整形 & ソート用カラム作成
+                                students_list = []
+                                for _, s_row in df_students.iterrows():
+                                    s_slots = s_row["可能日時"].split(",") if s_row["可能日時"] else []
+                                    students_list.append({
+                                        "data": s_row,
+                                        "s_slots_set": set(s_slots),
+                                        "num_slots": len(s_slots)
+                                    })
+                                
+                                # 🔥 戦略1: 候補日時が少ない（調整が難しい）生徒から先に処理する
+                                students_list.sort(key=lambda x: x["num_slots"])
+
+                                # スロットごとの埋まり具合（人気度）カウンター
+                                slot_popularity = {slot: 0 for slot in TIME_SLOTS}
+
                                 # 検索開始位置インデックス
                                 search_start_index = 0
 
-                                for _, s_row in df_students.iterrows():
+                                # --- 2. マッチング処理 ---
+                                for s_obj in students_list:
+                                    s_row = s_obj["data"]
                                     s_name = s_row["生徒氏名"]
                                     s_stream = s_row["文理"]
-                                    s_slots = set(s_row["可能日時"].split(",")) if s_row["可能日時"] else set()
+                                    s_slots = s_obj["s_slots_set"]
+                                    
+                                    # 前回メンター情報の取得
                                     want_prev = (s_row["前回希望"] == "あり")
                                     prev_mentor = None
                                     if not df_history.empty and "生徒氏名" in df_history.columns:
                                         hist = df_history[df_history["生徒氏名"] == s_name]
                                         if not hist.empty:
                                             prev_mentor = hist.iloc[-1]["前回担当メンター"]
-                                    
-                                    # --- 候補リストの生成（回転ロジック） ---
-                                    if mentor_names_fixed:
-                                        candidates = mentor_names_fixed[search_start_index:] + mentor_names_fixed[:search_start_index]
-                                    else:
-                                        candidates = []
-
-                                    if want_prev and prev_mentor in candidates:
-                                        candidates.remove(prev_mentor)
-                                        candidates.insert(0, prev_mentor)
 
                                     assigned_mentor = None
                                     assigned_slot = None
 
-                                    for m_name in candidates:
-                                        m_streams_list = mentor_streams.get(m_name, [])
-                                        if s_stream != "未定" and s_stream not in m_streams_list:
-                                            continue 
-                                        common = s_slots.intersection(mentor_schedule.get(m_name, set()))
-                                        if common:
-                                            slot = list(common)[0]
-                                            assigned_mentor = m_name
-                                            assigned_slot = slot
-                                            # スケジュールから削除（確定）
-                                            mentor_schedule[m_name].remove(slot)
+                                    # 生徒が可能なスロット一覧を特定
+                                    # まず、そもそもこのスロットに「文理が合うメンターの空き」があるかを確認
+                                    feasible_slots = []
+                                    for slot in s_slots:
+                                        # このスロットで空いている、かつ文理が合うメンターがいるか？
+                                        has_valid_mentor = False
+                                        for m_name in mentor_names_fixed:
+                                            if slot in mentor_schedule[m_name]:
+                                                m_streams_list = mentor_streams.get(m_name, [])
+                                                if s_stream == "未定" or s_stream in m_streams_list:
+                                                    has_valid_mentor = True
+                                                    break
+                                        if has_valid_mentor:
+                                            feasible_slots.append(slot)
+                                    
+                                    # 🔥 戦略2: 可能なスロットの中から、「すでに面談が入っている時間」を優先する
+                                    # slot_popularityの値が大きい順（降順）に並び替え
+                                    feasible_slots.sort(key=lambda s: slot_popularity.get(s, 0), reverse=True)
+
+                                    # 優先順位の高いスロットから順にメンターを探す
+                                    for slot in feasible_slots:
+                                        # メンター候補リストの作成（ローテーション考慮）
+                                        candidates = mentor_names_fixed[search_start_index:] + mentor_names_fixed[:search_start_index]
+                                        
+                                        # 前回希望がある場合、そのメンターをリストの先頭へ
+                                        if want_prev and prev_mentor in candidates:
+                                            candidates.remove(prev_mentor)
+                                            candidates.insert(0, prev_mentor)
+
+                                        # このスロットで空いているメンターを探す
+                                        for m_name in candidates:
+                                            m_streams_list = mentor_streams.get(m_name, [])
+                                            # 文理チェック
+                                            if s_stream != "未定" and s_stream not in m_streams_list:
+                                                continue
                                             
-                                            # --- 次回の検索開始位置を更新 ---
-                                            if m_name in mentor_names_fixed:
+                                            # 空きチェック
+                                            if slot in mentor_schedule[m_name]:
+                                                # マッチング成立！
+                                                assigned_mentor = m_name
+                                                assigned_slot = slot
+                                                
+                                                # メンターのスケジュールからこの時間を削除（埋まったため）
+                                                mentor_schedule[m_name].remove(slot)
+                                                
+                                                # スロットの人気度（埋まり数）をカウントアップ
+                                                slot_popularity[slot] += 1
+                                                
+                                                # 次回の検索開始位置を更新（ローテーション）
                                                 idx = mentor_names_fixed.index(m_name)
                                                 search_start_index = (idx + 1) % len(mentor_names_fixed)
-                                            break
-                                    
+                                                break # メンターループ抜け
+                                        
+                                        if assigned_mentor:
+                                            break # スロットループ抜け
+
                                     results.append({
                                         "生徒氏名": s_name, "決定メンター": assigned_mentor, "決定日時": assigned_slot,
                                         "ステータス": "決定" if assigned_mentor else "未定", "学校": s_row["学校"],
@@ -559,7 +610,9 @@ with tab3:
                                 room_managers_list = []
                                 for m_name, remaining_slots in mentor_schedule.items():
                                     for slot in remaining_slots:
-                                        room_managers_list.append({"日時": slot, "部屋担当メンター": m_name})
+                                        # 重要：面談が1件以上入っている日時のみ、部屋担当を表示する（誰もいない時間は不要）
+                                        if slot_popularity.get(slot, 0) > 0:
+                                            room_managers_list.append({"日時": slot, "部屋担当メンター": m_name})
                                 
                                 df_managers = pd.DataFrame(room_managers_list)
                                 if not df_managers.empty:
@@ -572,7 +625,7 @@ with tab3:
                                 else:
                                     st.session_state['room_managers_results'] = pd.DataFrame(columns=["日時", "部屋担当メンター"])
 
-                                st.success("マッチング＆部屋担当割り振り完了")
+                                st.success("最適化マッチング完了")
 
                         # --- 結果表示 ---
                         if st.session_state.get('matching_results') is not None:
@@ -597,11 +650,11 @@ with tab3:
                             # 🆕 部屋担当表の表示
                             st.write("---")
                             st.subheader("✅ 2. 部屋担当者リスト（待機メンター）")
-                            st.caption("※この時間帯にシフトを入れていますが、面談が割り振られなかったメンターです。")
+                            st.caption("※面談が発生している日時において、シフトが入っているが割り振られなかったメンターです。")
                             if st.session_state.get('room_managers_results') is not None and not st.session_state['room_managers_results'].empty:
                                 st.dataframe(st.session_state['room_managers_results'], hide_index=True, use_container_width=True)
                             else:
-                                st.info("待機メンターはいません（全員稼働中かシフトなし）")
+                                st.info("待機メンターはいません（全員稼働中か、面談自体がありません）")
 
                             st.write("---")
                             if st.button("✅ データを履歴に保存してリセット"):
