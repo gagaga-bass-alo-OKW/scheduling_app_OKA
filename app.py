@@ -111,7 +111,6 @@ def load_data_from_sheet(sheet_name):
             return pd.DataFrame()
         data = worksheet.get_all_records()
         df = pd.DataFrame(data)
-        # 数値などのパスワードが文字として扱われるように型変換
         if "パスワード" in df.columns:
             df["パスワード"] = df["パスワード"].astype(str)
         return df.fillna("")
@@ -480,6 +479,9 @@ with tab3:
                                 st.error("データ不足")
                             else:
                                 results = []
+                                # メンター名を固定リスト化してローテーションに使用
+                                mentor_names_fixed = list(df_mentors["メンター氏名"])
+                                
                                 mentor_schedule = {} 
                                 mentor_streams = {}  
                                 mentor_original_availability = {}
@@ -496,6 +498,9 @@ with tab3:
                                     streams = row["文理"].split(",") if "文理" in row and row["文理"] else []
                                     mentor_streams[m_name] = streams
 
+                                # 検索開始位置インデックス
+                                search_start_index = 0
+
                                 for _, s_row in df_students.iterrows():
                                     s_name = s_row["生徒氏名"]
                                     s_stream = s_row["文理"]
@@ -507,23 +512,35 @@ with tab3:
                                         if not hist.empty:
                                             prev_mentor = hist.iloc[-1]["前回担当メンター"]
                                     
-                                    assigned_mentor = None
-                                    assigned_slot = None
-                                    candidates = list(mentor_schedule.keys())
+                                    # --- 候補リストの生成（回転ロジック） ---
+                                    # search_start_indexから後ろ + 先頭からsearch_start_indexまで
+                                    if mentor_names_fixed:
+                                        candidates = mentor_names_fixed[search_start_index:] + mentor_names_fixed[:search_start_index]
+                                    else:
+                                        candidates = []
+
                                     if want_prev and prev_mentor in candidates:
                                         candidates.remove(prev_mentor)
                                         candidates.insert(0, prev_mentor)
+
+                                    assigned_mentor = None
+                                    assigned_slot = None
 
                                     for m_name in candidates:
                                         m_streams_list = mentor_streams.get(m_name, [])
                                         if s_stream != "未定" and s_stream not in m_streams_list:
                                             continue 
-                                        common = s_slots.intersection(mentor_schedule[m_name])
+                                        common = s_slots.intersection(mentor_schedule.get(m_name, set()))
                                         if common:
                                             slot = list(common)[0]
                                             assigned_mentor = m_name
                                             assigned_slot = slot
                                             mentor_schedule[m_name].remove(slot)
+                                            
+                                            # --- 次回の検索開始位置を更新 ---
+                                            if m_name in mentor_names_fixed:
+                                                idx = mentor_names_fixed.index(m_name)
+                                                search_start_index = (idx + 1) % len(mentor_names_fixed)
                                             break
                                     
                                     results.append({
