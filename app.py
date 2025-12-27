@@ -22,7 +22,7 @@ hide_streamlit_style = """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
 # ==========================================
-# 📅 2. 時間枠設定 & ソート用ロジック（修正済み）
+# 📅 2. 時間枠設定 & ソート用ロジック
 # ==========================================
 DAYS_WEEKDAY = ["1/6", "1/7", "1/8", "1/9"]
 HOURS_WEEKDAY = range(20, 23)
@@ -30,7 +30,6 @@ HOURS_WEEKDAY = range(20, 23)
 DAYS_WEEKEND = ["1/10", "1/11", "1/12"]
 HOURS_WEEKEND = range(10, 23)
 
-# ★修正点: 日付の正しい順序を定義
 ALL_DAYS_ORDER = DAYS_WEEKDAY + DAYS_WEEKEND
 
 TIME_SLOTS = []
@@ -41,7 +40,7 @@ for d in DAYS_WEEKEND:
     for h in HOURS_WEEKEND:
         TIME_SLOTS.append(f"{d} {h}:00-{h+1}:00")
 
-# ★修正点: ソート用関数（日付リストのインデックスを使って数値化）
+# ソート用関数
 def get_sort_key(val):
     if not val or pd.isna(val) or not isinstance(val, str):
         return (99, 99)
@@ -49,8 +48,6 @@ def get_sort_key(val):
         parts = val.split(" ")
         if len(parts) < 2: return (99, 99)
         date_part, time_part = parts[0], parts[1]
-        
-        # リストの何番目にあるかで数値化 (例: 1/6=0, 1/10=4)
         d_index = ALL_DAYS_ORDER.index(date_part) if date_part in ALL_DAYS_ORDER else 99
         h_num = int(time_part.split(":")[0])
         return (d_index, h_num)
@@ -317,7 +314,6 @@ with tab3:
 
             ad_tab1, ad_tab2, ad_tab3, ad_tab4 = st.tabs(["公開設定", "生徒管理", "メンター管理", "マッチング"])
             
-            # 1. 公開設定
             with ad_tab1:
                 col_set1, col_set2 = st.columns([1, 3])
                 with col_set1:
@@ -327,7 +323,6 @@ with tab3:
                 with col_set2:
                     st.info(f"現在の生徒受付ステータス: {'受付中' if is_accepting else '停止中'}")
 
-            # 2. 生徒管理
             with ad_tab2:
                 st.dataframe(load_data_from_sheet("students"))
                 with st.expander("データ削除・生成"):
@@ -342,7 +337,6 @@ with tab3:
                         save_data_to_sheet(pd.DataFrame(dummy), "students")
                         st.success("生成完了")
 
-            # 3. メンター管理
             with ad_tab3:
                 st.dataframe(load_data_from_sheet("mentors"))
                 with st.expander("データ削除・生成"):
@@ -356,7 +350,6 @@ with tab3:
                         save_data_to_sheet(pd.DataFrame(dummy), "mentors")
                         st.success("生成完了")
 
-            # 4. マッチング (機能復旧 + 修正)
             with ad_tab4:
                 st.subheader("🚀 マッチング (飛び石禁止・連投優先)")
                 df_st = load_data_from_sheet("students")
@@ -368,7 +361,6 @@ with tab3:
                         st.error("データ不足")
                     else:
                         results = []
-                        # データ準備
                         mentor_schedule = {}
                         mentor_streams = {}
                         mentor_assignments = {}
@@ -385,7 +377,7 @@ with tab3:
                             s_slots = s_row["可能日時"].split(",") if s_row["可能日時"] else []
                             students_list.append({"data": s_row, "s_slots_set": set(s_slots), "num_slots": len(s_slots)})
                         
-                        students_list.sort(key=lambda x: x["num_slots"]) # 選択肢が少ない子を優先
+                        students_list.sort(key=lambda x: x["num_slots"])
 
                         slot_popularity = {slot: 0 for slot in TIME_SLOTS}
 
@@ -398,7 +390,6 @@ with tab3:
                             if idx < len(TIME_SLOTS)-1 and TIME_SLOTS[idx+1].split(" ")[0] == target_day: adjacent.append(TIME_SLOTS[idx+1])
                             return adjacent
 
-                        # マッチング処理
                         for s_obj in students_list:
                             s_row = s_obj["data"]
                             s_name = s_row["生徒氏名"]
@@ -446,7 +437,7 @@ with tab3:
                                     else:
                                         is_adj = any(adj in assigned for adj in get_adjacent_slots(slot))
                                         if is_adj: score += 500
-                                        else: score -= 1000 # 飛び石ペナルティ
+                                        else: score -= 1000
                                     score += random.random()
                                     return score
 
@@ -465,11 +456,9 @@ with tab3:
                             })
                         
                         df_res = pd.DataFrame(results)
-                        # ★修正点: ソート適用
                         df_res["_sort"] = df_res["決定日時"].apply(get_sort_key)
                         st.session_state['matching_results'] = df_res.sort_values(by="_sort").drop(columns=["_sort"])
 
-                        # 部屋担当計算
                         room_managers_list = []
                         for m_name, remaining_slots in mentor_schedule.items():
                             for slot in remaining_slots:
@@ -484,7 +473,6 @@ with tab3:
                         else:
                             st.session_state['room_managers_results'] = pd.DataFrame(columns=["日時", "部屋担当メンター"])
 
-                # 結果表示エリア
                 if st.session_state.get('matching_results') is not None:
                     st.write("---")
                     st.subheader("✅ 1. 面談マッチング結果")
@@ -501,11 +489,9 @@ with tab3:
                     )
                     st.session_state['matching_results'] = edited_df
 
-                    # ★修正点: リアルタイム正誤判定（バリデーション）
                     st.write("---")
                     st.subheader("🔍 設定チェック")
                     
-                    # 辞書化して高速参照
                     student_requests = {}
                     for _, r in df_st.iterrows():
                         student_requests[r["生徒氏名"]] = set(r["可能日時"].split(",")) if r["可能日時"] else set()
@@ -522,10 +508,17 @@ with tab3:
                         status = row["ステータス"]
 
                         if status == "決定":
+                            # 生徒の希望チェック
                             if s_name in student_requests:
                                 if slot not in student_requests[s_name]:
-                                    errors.append(f"❌ **{s_name}** さんはこの日時を希望していません ({slot})")
+                                    # 本来の希望リストを取得してソート
+                                    true_wishes = list(student_requests[s_name])
+                                    true_wishes.sort(key=get_sort_key)
+                                    wishes_str = ", ".join(true_wishes) if true_wishes else "なし"
+                                    
+                                    errors.append(f"❌ **{s_name}** さんはこの日時({slot})を希望していません。\n　👉 **本来の希望**: {wishes_str}")
                             
+                            # メンターの空きチェック
                             if m_name in mentor_availabilities:
                                 if slot not in mentor_availabilities[m_name]:
                                     errors.append(f"⚠️ **{m_name}** さんはこの時間空いていません ({slot})")
@@ -538,7 +531,6 @@ with tab3:
                     else:
                         st.success("✅ すべての設定が「生徒の希望内」かつ「メンターの空き時間内」です。")
 
-                    # 部屋担当表示
                     st.write("---")
                     st.subheader("✅ 2. 部屋担当者リスト")
                     if st.session_state.get('room_managers_results') is not None and not st.session_state['room_managers_results'].empty:
@@ -561,7 +553,6 @@ with tab3:
                             st.success("完了！")
                             time.sleep(1)
                             st.rerun()
-        
         elif password:
             st.session_state['login_attempts'] += 1
             st.warning("パスワードが違います")
