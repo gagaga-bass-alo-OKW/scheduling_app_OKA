@@ -11,7 +11,6 @@ import random
 st.set_page_config(page_title="ALOHA面談日程調整", layout="wide")
 st.markdown("""<meta name="robots" content="noindex, nofollow">""", unsafe_allow_html=True)
 
-# CSSでメニュー非表示
 hide_streamlit_style = """
             <style>
             #MainMenu {visibility: hidden;}
@@ -40,7 +39,6 @@ for d in DAYS_WEEKEND:
     for h in HOURS_WEEKEND:
         TIME_SLOTS.append(f"{d} {h}:00-{h+1}:00")
 
-# ソート用関数
 def get_sort_key(val):
     if not val or pd.isna(val) or not isinstance(val, str):
         return (99, 99)
@@ -351,10 +349,51 @@ with tab3:
                         st.success("生成完了")
 
             with ad_tab4:
-                st.subheader("🚀 マッチング (飛び石禁止・連投優先)")
                 df_st = load_data_from_sheet("students")
                 df_mt = load_data_from_sheet("mentors")
                 df_hist = load_data_from_sheet("history")
+
+                # ===============================================
+                # 🆕 追加機能：指名マッチング確認ツール
+                # ===============================================
+                st.subheader("🤝 指名マッチング確認ツール")
+                st.info("特定の生徒とメンターを選択すると、共通の空き時間が表示されます。")
+                
+                col_check_s, col_check_m = st.columns(2)
+                
+                # 生徒リスト作成
+                student_options = df_st["生徒氏名"].tolist() if not df_st.empty else []
+                mentor_options = df_mt["メンター氏名"].tolist() if not df_mt.empty else []
+
+                with col_check_s:
+                    selected_s = st.selectbox("生徒を選択", options=[""] + student_options)
+                with col_check_m:
+                    selected_m = st.selectbox("メンターを選択", options=[""] + mentor_options)
+                
+                if selected_s and selected_m:
+                    # 生徒の空き
+                    row_s = df_st[df_st["生徒氏名"] == selected_s].iloc[0]
+                    slots_s = set([x.strip() for x in row_s["可能日時"].split(",") if x.strip()])
+                    
+                    # メンターの空き
+                    row_m = df_mt[df_mt["メンター氏名"] == selected_m].iloc[0]
+                    slots_m = set([x.strip() for x in row_m["可能日時"].split(",") if x.strip()])
+                    
+                    # 共通部分
+                    common_slots = list(slots_s & slots_m)
+                    common_slots.sort(key=get_sort_key)
+                    
+                    if common_slots:
+                        st.success(f"✅ **{selected_s}** さんと **{selected_m}** さんのマッチング可能日時")
+                        # 見やすく表示
+                        st.write(", ".join(common_slots))
+                    else:
+                        st.error(f"❌ **{selected_s}** さんと **{selected_m}** さんの共通する空き時間がありません。")
+                
+                st.write("---")
+                # ===============================================
+
+                st.subheader("🚀 自動マッチング (飛び石禁止・連投優先)")
                 
                 if st.button("自動マッチング実行", type="primary"):
                     if df_st.empty or df_mt.empty:
@@ -494,40 +533,44 @@ with tab3:
                     
                     student_requests = {}
                     for _, r in df_st.iterrows():
-                        student_requests[r["生徒氏名"]] = set(r["可能日時"].split(",")) if r["可能日時"] else set()
+                        raw_slots = r["可能日時"].split(",") if r["可能日時"] else []
+                        student_requests[r["生徒氏名"]] = set([s.strip() for s in raw_slots])
                     
                     mentor_availabilities = {}
                     for _, r in df_mt.iterrows():
-                        mentor_availabilities[r["メンター氏名"]] = set(r["可能日時"].split(",")) if r["可能日時"] else set()
+                        raw_slots = r["可能日時"].split(",") if r["可能日時"] else []
+                        mentor_availabilities[r["メンター氏名"]] = set([s.strip() for s in raw_slots])
 
                     errors = []
+                    
                     for idx, row in edited_df.iterrows():
                         s_name = row["生徒氏名"]
                         m_name = row["決定メンター"]
-                        slot = row["決定日時"]
+                        slot = str(row["決定日時"]).strip()
                         status = row["ステータス"]
 
                         if status == "決定":
-                            # 生徒の希望チェック
                             if s_name in student_requests:
                                 if slot not in student_requests[s_name]:
-                                    # 本来の希望リストを取得してソート
                                     true_wishes = list(student_requests[s_name])
                                     true_wishes.sort(key=get_sort_key)
                                     wishes_str = ", ".join(true_wishes) if true_wishes else "なし"
-                                    
-                                    errors.append(f"❌ **{s_name}** さんはこの日時({slot})を希望していません。\n　👉 **本来の希望**: {wishes_str}")
+                                    errors.append(f"❌ **{s_name}** さんはこの日時 ({slot}) を希望していません。\n　👉 **本来の希望**: {wishes_str}")
                             
-                            # メンターの空きチェック
                             if m_name in mentor_availabilities:
                                 if slot not in mentor_availabilities[m_name]:
-                                    errors.append(f"⚠️ **{m_name}** さんはこの時間空いていません ({slot})")
+                                    true_avail = list(mentor_availabilities[m_name])
+                                    true_avail.sort(key=get_sort_key)
+                                    avail_str = ", ".join(true_avail) if true_avail else "空きなし"
+                                    errors.append(f"⚠️ **{m_name}** さんはこの時間空いていません ({slot})。\n　👉 **本来の空き**: {avail_str}")
                             elif m_name:
                                 errors.append(f"❓ **{m_name}** というメンターは登録されていません")
 
                     if errors:
                         st.error(f"以下の問題が見つかりました ({len(errors)}件):")
-                        for err in errors: st.write(err)
+                        for err in errors:
+                            st.write(err)
+                            st.write("---")
                     else:
                         st.success("✅ すべての設定が「生徒の希望内」かつ「メンターの空き時間内」です。")
 
