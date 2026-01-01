@@ -53,7 +53,7 @@ def get_sort_key(val):
         return (99, 99)
 
 def render_schedule_grid(default_selected=[], key_suffix=""):
-    st.write("▼ 以下の表で、可能な日時にチェック ✅ を入れてください")
+    st.write("▼ 以下の表で、可能な日時'全て'にチェック ✅ を入れてください")
     
     st.markdown("**📅 平日 (20:00 〜 23:00)**")
     times_wd = [f"{h}:00-{h+1}:00" for h in HOURS_WEEKDAY]
