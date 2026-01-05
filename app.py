@@ -53,7 +53,7 @@ def get_sort_key(val):
         return (99, 99)
 
 def render_schedule_grid(default_selected=[], key_suffix=""):
-    st.write("▼ 以下の表で、可能な日時'全て'にチェック ✅ を入れてください")
+    st.write("▼ 以下の表で、可能な日時にチェック ✅ を入れてください")
     
     st.markdown("**📅 平日 (20:00 〜 23:00)**")
     times_wd = [f"{h}:00-{h+1}:00" for h in HOURS_WEEKDAY]
@@ -353,15 +353,11 @@ with tab3:
                 df_mt = load_data_from_sheet("mentors")
                 df_hist = load_data_from_sheet("history")
 
-                # ===============================================
-                # 🆕 追加機能：指名マッチング確認ツール
-                # ===============================================
+                # 指名マッチング確認
                 st.subheader("🤝 指名マッチング確認ツール")
                 st.info("特定の生徒とメンターを選択すると、共通の空き時間が表示されます。")
                 
                 col_check_s, col_check_m = st.columns(2)
-                
-                # 生徒リスト作成
                 student_options = df_st["生徒氏名"].tolist() if not df_st.empty else []
                 mentor_options = df_mt["メンター氏名"].tolist() if not df_mt.empty else []
 
@@ -371,30 +367,24 @@ with tab3:
                     selected_m = st.selectbox("メンターを選択", options=[""] + mentor_options)
                 
                 if selected_s and selected_m:
-                    # 生徒の空き
                     row_s = df_st[df_st["生徒氏名"] == selected_s].iloc[0]
                     slots_s = set([x.strip() for x in row_s["可能日時"].split(",") if x.strip()])
                     
-                    # メンターの空き
                     row_m = df_mt[df_mt["メンター氏名"] == selected_m].iloc[0]
                     slots_m = set([x.strip() for x in row_m["可能日時"].split(",") if x.strip()])
                     
-                    # 共通部分
                     common_slots = list(slots_s & slots_m)
                     common_slots.sort(key=get_sort_key)
                     
                     if common_slots:
                         st.success(f"✅ **{selected_s}** さんと **{selected_m}** さんのマッチング可能日時")
-                        # 見やすく表示
                         st.write(", ".join(common_slots))
                     else:
                         st.error(f"❌ **{selected_s}** さんと **{selected_m}** さんの共通する空き時間がありません。")
                 
                 st.write("---")
-                # ===============================================
 
                 st.subheader("🚀 自動マッチング (飛び石禁止・連投優先)")
-                
                 if st.button("自動マッチング実行", type="primary"):
                     if df_st.empty or df_mt.empty:
                         st.error("データ不足")
@@ -466,7 +456,9 @@ with tab3:
 
                                 def calculate_mentor_score(m_name):
                                     score = 0
+                                    # ✅ 前回担当者の優先ロジック（最優先）
                                     if want_prev and m_name == prev_mentor: score += 10000 
+                                    
                                     assigned = mentor_assignments[m_name]
                                     current_day = slot.split(" ")[0]
                                     day_shifts = [s for s in assigned if s.startswith(current_day)]
@@ -491,7 +483,10 @@ with tab3:
                             
                             results.append({
                                 "生徒氏名": s_name, "決定メンター": assigned_mentor, "決定日時": assigned_slot,
-                                "ステータス": "決定" if assigned_mentor else "未定"
+                                "ステータス": "決定" if assigned_mentor else "未定", 
+                                "学校": s_row["学校"],
+                                "学年": s_row["学年"], # ✅ 学年を追加
+                                "生徒文理": s_stream
                             })
                         
                         df_res = pd.DataFrame(results)
@@ -528,6 +523,7 @@ with tab3:
                     )
                     st.session_state['matching_results'] = edited_df
 
+                    # バリデーション
                     st.write("---")
                     st.subheader("🔍 設定チェック")
                     
@@ -582,19 +578,33 @@ with tab3:
                         st.info("待機メンターはいません")
 
                     st.write("---")
-                    col_dl, col_save = st.columns(2)
-                    with col_dl:
-                        csv = edited_df.to_csv(index=False).encode('utf-8-sig')
-                        st.download_button("📥 結果CSVダウンロード", csv, "result.csv", "text/csv")
-                    with col_save:
-                        if st.button("✅ これで確定して履歴保存"):
-                            append_data_to_sheet(edited_df[edited_df["ステータス"]=="決定"][["生徒氏名","決定メンター"]].rename(columns={"決定メンター":"前回担当メンター"}), "history")
+                    
+                    st.markdown("### 💾 データ保存とリセット")
+                    
+                    csv = edited_df.to_csv(index=False).encode('utf-8-sig')
+                    st.download_button("📥 結果CSVダウンロード", csv, "result.csv", "text/csv")
+                    
+                    st.write("") 
+
+                    col_save_only, col_delete_all = st.columns(2)
+                    
+                    with col_save_only:
+                        if st.button("① 決定内容を「履歴」に保存 (データは残す)", type="primary"):
+                            # ✅ 修正: 必要なカラムを選択して履歴へ保存
+                            history_df = edited_df[edited_df["ステータス"]=="決定"][["生徒氏名", "決定メンター", "学校", "学年", "生徒文理"]]
+                            history_df = history_df.rename(columns={"決定メンター": "前回担当メンター", "生徒文理": "文理"})
+                            append_data_to_sheet(history_df, "history")
+                            st.success("✅ 履歴シート(history)に「氏名・メンター・学校・学年・文理」を保存しました！")
+                            st.info("データはまだ残っています。続けて編集可能です。")
+
+                    with col_delete_all:
+                        if st.button("🗑️ ② データを全消去してリセット (次回の準備)"):
                             save_data_to_sheet(pd.DataFrame(), "students")
                             save_data_to_sheet(pd.DataFrame(), "mentors")
                             st.session_state['matching_results'] = None
                             st.session_state['room_managers_results'] = None
-                            st.success("完了！")
-                            time.sleep(1)
+                            st.warning("生徒・メンターデータを全消去しました。画面をリロードします。")
+                            time.sleep(2)
                             st.rerun()
         elif password:
             st.session_state['login_attempts'] += 1
