@@ -24,7 +24,7 @@ st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 # 📅 2. 時間枠設定 & ソート用ロジック
 # ==========================================
 DAYS_WEEKDAY = ["2/9", "2/10", "2/11", "2/12","2/13"]
-HOURS_WEEKDAY = range(20, 23)
+HOURS_WEEKDAY = range(19, 23)
 
 DAYS_WEEKEND = ["2/15", "2/14"]
 HOURS_WEEKEND = range(10, 23)
