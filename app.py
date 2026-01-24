@@ -281,16 +281,14 @@ with tab2:
         with st.form("mentor_form"):
             st.markdown(f"**編集中のユーザー: {defaults['name']}**")
             m_stream = st.multiselect("文理選択", ["文系", "理系"], default=defaults["streams"])
-                    st.write("")
+           st.write("")
             is_unavailable = st.checkbox("🚫 今回は全日程参加できません（不参加）", value=(defaults["slots"] == ["参加不可"]))
-            
             m_available = []
             if not is_unavailable:
                 # 参加可能な場合のみスケジュール表を表示
                 m_available = render_schedule_grid(defaults["slots"], key_suffix="mentor")
             else:
                 st.warning("「参加不可」として登録・更新します。")
-            m_available = render_schedule_grid(defaults["slots"], key_suffix="mentor")
             if st.form_submit_button("更新 / 登録"):
                 if m_available and m_stream:
                     df_m = load_data_from_sheet("mentors")
