@@ -23,10 +23,10 @@ st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 # ==========================================
 # 📅 2. 時間枠設定 & ソート用ロジック
 # ==========================================
-DAYS_WEEKDAY = ["1/6", "1/7", "1/8", "1/9"]
+DAYS_WEEKDAY = ["2/9", "2/10", "2/11", "2/12","2/13"]
 HOURS_WEEKDAY = range(20, 23)
 
-DAYS_WEEKEND = ["1/10", "1/11", "1/12"]
+DAYS_WEEKEND = ["2/15", "2/14"]
 HOURS_WEEKEND = range(10, 23)
 
 ALL_DAYS_ORDER = DAYS_WEEKDAY + DAYS_WEEKEND
