@@ -191,7 +191,7 @@ with tab1:
         with st.form("student_form"):
             col1, col2 = st.columns(2)
             with col1:
-                s_name_input = st.text_input("氏名（本名） ※")
+                s_name_input = st.text_input("氏名（本名フルネーム） ※")
                 s_name = s_name_input.strip() if s_name_input else ""
                 s_line_name = st.text_input("LINEでのあなたの名前 ※")
                 s_school = st.text_input("学校名 ※")
@@ -237,7 +237,7 @@ with tab2:
     
     col_search1, col_search2, col_search3 = st.columns([2, 2, 1])
     with col_search1:
-        input_name_query = st.text_input("氏名", key="m_search_name")
+        input_name_query = st.text_input("氏名（フルネーム）", key="m_search_name")
     with col_search2:
         input_pass_query = st.text_input("パスワード", type="password", key="m_search_pass")
     with col_search3:
