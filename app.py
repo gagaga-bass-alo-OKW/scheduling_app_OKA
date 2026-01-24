@@ -281,8 +281,9 @@ with tab2:
         with st.form("mentor_form"):
             st.markdown(f"**編集中のユーザー: {defaults['name']}**")
             m_stream = st.multiselect("文理選択", ["文系", "理系"], default=defaults["streams"])
-           st.write("")
+            st.write("")
             is_unavailable = st.checkbox("🚫 今回は全日程参加できません（不参加）", value=(defaults["slots"] == ["参加不可"]))
+           
             m_available = []
             if not is_unavailable:
                 # 参加可能な場合のみスケジュール表を表示
