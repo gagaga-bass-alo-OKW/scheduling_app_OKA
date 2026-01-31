@@ -360,38 +360,43 @@ with tab3:
                 df_mt = load_data_from_sheet("mentors")
                 df_hist = load_data_from_sheet("history")
 
-                # 指名マッチング確認
-                st.subheader("🤝 指名マッチング確認ツール")
-                st.info("特定の生徒とメンターを選択すると、共通の空き時間が表示されます。")
+                # ==========================================
+                # 🔒 指名固定設定エリア (NEW)
+                # ==========================================
+                st.subheader("🔒 指名マッチング (優先確定)")
+                st.info("ここで指定したペアは、他の条件より優先してマッチングされます。")
                 
-                col_check_s, col_check_m = st.columns(2)
+                # 指名用データフレームの初期化
+                if "fixed_pairs_df" not in st.session_state:
+                    st.session_state["fixed_pairs_df"] = pd.DataFrame(columns=["生徒氏名", "メンター氏名"])
+                
                 student_options = df_st["生徒氏名"].tolist() if not df_st.empty else []
                 mentor_options = df_mt["メンター氏名"].tolist() if not df_mt.empty else []
 
-                with col_check_s:
-                    selected_s = st.selectbox("生徒を選択", options=[""] + student_options)
-                with col_check_m:
-                    selected_m = st.selectbox("メンターを選択", options=[""] + mentor_options)
-                
-                if selected_s and selected_m:
-                    row_s = df_st[df_st["生徒氏名"] == selected_s].iloc[0]
-                    slots_s = set([x.strip() for x in row_s["可能日時"].split(",") if x.strip()])
-                    
-                    row_m = df_mt[df_mt["メンター氏名"] == selected_m].iloc[0]
-                    slots_m = set([x.strip() for x in row_m["可能日時"].split(",") if x.strip()])
-                    
-                    common_slots = list(slots_s & slots_m)
-                    common_slots.sort(key=get_sort_key)
-                    
-                    if common_slots:
-                        st.success(f"✅ **{selected_s}** さんと **{selected_m}** さんのマッチング可能日時")
-                        st.write(", ".join(common_slots))
-                    else:
-                        st.error(f"❌ **{selected_s}** さんと **{selected_m}** さんの共通する空き時間がありません。")
-                
+                # Data Editorで入力を受け付ける
+                fixed_pairs = st.data_editor(
+                    st.session_state["fixed_pairs_df"],
+                    column_config={
+                        "生徒氏名": st.column_config.SelectboxColumn(
+                            "生徒を選択",
+                            options=student_options,
+                            width="medium",
+                            required=True
+                        ),
+                        "メンター氏名": st.column_config.SelectboxColumn(
+                            "メンターを選択",
+                            options=mentor_options,
+                            width="medium",
+                            required=True
+                        )
+                    },
+                    num_rows="dynamic",
+                    key="fixed_pairs_editor"
+                )
+
                 st.write("---")
 
-                st.subheader("🚀 自動マッチング (指名・連投優先)")
+                st.subheader("🚀 自動マッチング実行")
                 if st.button("自動マッチング実行", type="primary"):
                     if df_st.empty or df_mt.empty:
                         st.error("データ不足")
@@ -413,7 +418,10 @@ with tab3:
                             s_slots = s_row["可能日時"].split(",") if s_row["可能日時"] else []
                             students_list.append({"data": s_row, "s_slots_set": set(s_slots), "num_slots": len(s_slots)})
                         
+                        # 通常は空き枠が少ない順に処理するが、指名固定を最優先するためにリストからは除外せず、処理済みフラグ管理を行う
                         students_list.sort(key=lambda x: x["num_slots"])
+                        
+                        processed_students = set()
 
                         def get_adjacent_slots(target_slot):
                             if target_slot not in TIME_SLOTS: return []
@@ -424,7 +432,6 @@ with tab3:
                             if idx < len(TIME_SLOTS)-1 and TIME_SLOTS[idx+1].split(" ")[0] == target_day: adjacent.append(TIME_SLOTS[idx+1])
                             return adjacent
 
-                        # --- スコア計算用ヘルパー関数（共通化）---
                         def calculate_shift_score(m_name, target_slot):
                             score = 0
                             assigned = mentor_assignments[m_name]
@@ -432,19 +439,74 @@ with tab3:
                             day_shifts = [s for s in assigned if s.startswith(current_day)]
                             
                             if not day_shifts:
-                                if assigned: score += 50 # 他の日に入っているなら少し優先
+                                if assigned: score += 50 
                             else:
                                 is_adj = any(adj in assigned for adj in get_adjacent_slots(target_slot))
-                                if is_adj: score += 500  # 連投なら高得点
-                                else: score -= 1000      # 飛び石なら大幅減点
+                                if is_adj: score += 500
+                                else: score -= 1000
                             
                             score += random.random()
                             return score
-                        # ------------------------------------
+                        
+                        # ==========================================
+                        # PHASE 0: 指名固定マッチング (NEW)
+                        # ==========================================
+                        for _, pair in fixed_pairs.iterrows():
+                            f_student = pair["生徒氏名"]
+                            f_mentor = pair["メンター氏名"]
+                            
+                            if not f_student or not f_mentor: continue
+                            if f_student in processed_students: continue # 重複防止
 
+                            # 生徒データを探す
+                            s_obj = next((x for x in students_list if x["data"]["生徒氏名"] == f_student), None)
+                            if not s_obj: continue
+
+                            s_slots = s_obj["s_slots_set"]
+                            
+                            # メンターの空きを確認
+                            if f_mentor not in mentor_schedule:
+                                results.append({"生徒氏名": f_student, "決定メンター": None, "決定日時": None, "ステータス": "指名エラー(メンター不在)", "学校": s_obj["data"]["学校"], "学年": s_obj["data"]["学年"], "生徒文理": s_obj["data"]["文理"]})
+                                processed_students.add(f_student)
+                                continue
+
+                            # 共通日時
+                            common_slots = list(s_slots & mentor_schedule[f_mentor])
+                            
+                            if common_slots:
+                                # 共通日時の中から、メンターにとって都合の良い時間（連投など）を選ぶ
+                                common_slots.sort(key=lambda s: calculate_shift_score(f_mentor, s), reverse=True)
+                                assigned_slot = common_slots[0]
+                                
+                                # 確定
+                                mentor_schedule[f_mentor].remove(assigned_slot)
+                                mentor_assignments[f_mentor].add(assigned_slot)
+                                
+                                results.append({
+                                    "生徒氏名": f_student, "決定メンター": f_mentor, "決定日時": assigned_slot,
+                                    "ステータス": "決定(指名)", 
+                                    "学校": s_obj["data"]["学校"], "学年": s_obj["data"]["学年"], "生徒文理": s_obj["data"]["文理"]
+                                })
+                            else:
+                                # マッチング不可
+                                results.append({
+                                    "生徒氏名": f_student, "決定メンター": None, "決定日時": None,
+                                    "ステータス": "指名エラー(日時不一致)", 
+                                    "学校": s_obj["data"]["学校"], "学年": s_obj["data"]["学年"], "生徒文理": s_obj["data"]["文理"]
+                                })
+                            
+                            processed_students.add(f_student)
+
+                        # ==========================================
+                        # PHASE 1 & 2: 通常マッチング (既存ロジック)
+                        # ==========================================
                         for s_obj in students_list:
                             s_row = s_obj["data"]
                             s_name = s_row["生徒氏名"]
+                            
+                            # 既に指名で決まっていればスキップ
+                            if s_name in processed_students: continue
+
                             s_stream = s_row["文理"]
                             s_slots = s_obj["s_slots_set"]
                             
@@ -456,24 +518,18 @@ with tab3:
 
                             assigned_mentor, assigned_slot = None, None
 
-                            # 🔥 修正ポイント: 前回担当者が希望されており、かつ空いていれば【最優先】で確保する
+                            # --- 前回担当優先 ---
                             if want_prev and prev_mentor and prev_mentor in mentor_schedule:
-                                # 生徒の希望日時と、前回担当者の空き日時の共通部分（AND）をとる
                                 common_slots = list(s_slots & mentor_schedule[prev_mentor])
-                                
                                 if common_slots:
-                                    # 共通部分があるなら、その中からベストな時間（連投など）を選ぶ
                                     common_slots.sort(key=lambda s: calculate_shift_score(prev_mentor, s), reverse=True)
                                     assigned_mentor = prev_mentor
                                     assigned_slot = common_slots[0]
-                                    
-                                    # 確定処理
                                     mentor_schedule[prev_mentor].remove(assigned_slot)
                                     mentor_assignments[prev_mentor].add(assigned_slot)
 
-                            # 上記で決まらなかった場合のみ、通常の検索を行う
+                            # --- 通常マッチング ---
                             if not assigned_mentor:
-                                # マッチング可能な枠を抽出
                                 feasible_slots = []
                                 for slot in s_slots:
                                     for m_name in mentor_names_list:
@@ -483,7 +539,7 @@ with tab3:
                                                 feasible_slots.append(slot)
                                                 break
                                 feasible_slots = list(set(feasible_slots))
-                                random.shuffle(feasible_slots) # 分散のためシャッフル
+                                random.shuffle(feasible_slots)
 
                                 for slot in feasible_slots:
                                     candidates = []
@@ -494,8 +550,6 @@ with tab3:
                                             candidates.append(m_name)
                                     
                                     if not candidates: continue
-
-                                    # 候補者の中からベスト（連投できる人など）を選ぶ
                                     candidates.sort(key=lambda m: calculate_shift_score(m, slot), reverse=True)
                                     
                                     best_mentor = candidates[0]
@@ -508,10 +562,9 @@ with tab3:
                             results.append({
                                 "生徒氏名": s_name, "決定メンター": assigned_mentor, "決定日時": assigned_slot,
                                 "ステータス": "決定" if assigned_mentor else "未定", 
-                                "学校": s_row["学校"],
-                                "学年": s_row["学年"],
-                                "生徒文理": s_stream
+                                "学校": s_row["学校"], "学年": s_row["学年"], "生徒文理": s_stream
                             })
+                            processed_students.add(s_name)
                         
                         df_res = pd.DataFrame(results)
                         df_res["_sort"] = df_res["決定日時"].apply(get_sort_key)
@@ -527,7 +580,7 @@ with tab3:
                         column_config={
                             "決定メンター": st.column_config.SelectboxColumn("担当", options=all_mentors, width="medium"),
                             "決定日時": st.column_config.SelectboxColumn("日時", options=TIME_SLOTS, width="medium"),
-                            "ステータス": st.column_config.SelectboxColumn("状態", options=["決定", "未定", "キャンセル"], width="small")
+                            "ステータス": st.column_config.SelectboxColumn("状態", options=["決定", "未定", "キャンセル", "決定(指名)", "指名エラー(日時不一致)"], width="small")
                         },
                         hide_index=True, num_rows="fixed", key="editor_final"
                     )
@@ -555,7 +608,7 @@ with tab3:
                         slot = str(row["決定日時"]).strip()
                         status = row["ステータス"]
 
-                        if status == "決定":
+                        if "決定" in status:
                             if s_name in student_requests:
                                 if slot not in student_requests[s_name]:
                                     true_wishes = list(student_requests[s_name])
@@ -593,7 +646,7 @@ with tab3:
                     
                     with col_save_only:
                         if st.button("① 決定内容を「履歴」に保存 (データは残す)", type="primary"):
-                            history_df = edited_df[edited_df["ステータス"]=="決定"][["生徒氏名", "決定メンター", "学校", "学年", "生徒文理"]]
+                            history_df = edited_df[edited_df["ステータス"].str.contains("決定")][["生徒氏名", "決定メンター", "学校", "学年", "生徒文理"]]
                             history_df = history_df.rename(columns={"決定メンター": "前回担当メンター", "生徒文理": "文理"})
                             append_data_to_sheet(history_df, "history")
                             st.success("✅ 履歴シート(history)に「氏名・メンター・学校・学年・文理」を保存しました！")
