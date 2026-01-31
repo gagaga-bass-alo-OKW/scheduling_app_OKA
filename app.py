@@ -283,10 +283,9 @@ with tab2:
             m_stream = st.multiselect("文理選択", ["文系", "理系"], default=defaults["streams"])
             st.write("")
             is_unavailable = st.checkbox("🚫 今回は全日程参加できません（不参加）", value=(defaults["slots"] == ["参加不可"]))
-           
+            
             m_available = []
             if not is_unavailable:
-                # 参加可能な場合のみスケジュール表を表示
                 m_available = render_schedule_grid(defaults["slots"], key_suffix="mentor")
             else:
                 st.warning("「参加不可」として登録・更新します。")
@@ -392,7 +391,7 @@ with tab3:
                 
                 st.write("---")
 
-                st.subheader("🚀 自動マッチング (飛び石禁止・連投優先)")
+                st.subheader("🚀 自動マッチング (指名・連投優先)")
                 if st.button("自動マッチング実行", type="primary"):
                     if df_st.empty or df_mt.empty:
                         st.error("データ不足")
@@ -416,8 +415,6 @@ with tab3:
                         
                         students_list.sort(key=lambda x: x["num_slots"])
 
-                        slot_popularity = {slot: 0 for slot in TIME_SLOTS}
-
                         def get_adjacent_slots(target_slot):
                             if target_slot not in TIME_SLOTS: return []
                             idx = TIME_SLOTS.index(target_slot)
@@ -426,6 +423,24 @@ with tab3:
                             if idx > 0 and TIME_SLOTS[idx-1].split(" ")[0] == target_day: adjacent.append(TIME_SLOTS[idx-1])
                             if idx < len(TIME_SLOTS)-1 and TIME_SLOTS[idx+1].split(" ")[0] == target_day: adjacent.append(TIME_SLOTS[idx+1])
                             return adjacent
+
+                        # --- スコア計算用ヘルパー関数（共通化）---
+                        def calculate_shift_score(m_name, target_slot):
+                            score = 0
+                            assigned = mentor_assignments[m_name]
+                            current_day = target_slot.split(" ")[0]
+                            day_shifts = [s for s in assigned if s.startswith(current_day)]
+                            
+                            if not day_shifts:
+                                if assigned: score += 50 # 他の日に入っているなら少し優先
+                            else:
+                                is_adj = any(adj in assigned for adj in get_adjacent_slots(target_slot))
+                                if is_adj: score += 500  # 連投なら高得点
+                                else: score -= 1000      # 飛び石なら大幅減点
+                            
+                            score += random.random()
+                            return score
+                        # ------------------------------------
 
                         for s_obj in students_list:
                             s_row = s_obj["data"]
@@ -441,79 +456,66 @@ with tab3:
 
                             assigned_mentor, assigned_slot = None, None
 
-                            feasible_slots = []
-                            for slot in s_slots:
-                                for m_name in mentor_names_list:
-                                    if slot in mentor_schedule[m_name]:
-                                        m_streams_list = mentor_streams.get(m_name, [])
-                                        if s_stream == "未定" or s_stream in m_streams_list:
-                                            feasible_slots.append(slot)
-                                            break
-                            feasible_slots = list(set(feasible_slots))
-                            feasible_slots.sort(key=lambda s: slot_popularity.get(s, 0), reverse=True)
-
-                            for slot in feasible_slots:
-                                candidates = []
-                                for m_name in mentor_names_list:
-                                    m_streams_list = mentor_streams.get(m_name, [])
-                                    if s_stream != "未定" and s_stream not in m_streams_list: continue
-                                    if slot in mentor_schedule[m_name]:
-                                        candidates.append(m_name)
+                            # 🔥 修正ポイント: 前回担当者が希望されており、かつ空いていれば【最優先】で確保する
+                            if want_prev and prev_mentor and prev_mentor in mentor_schedule:
+                                # 生徒の希望日時と、前回担当者の空き日時の共通部分（AND）をとる
+                                common_slots = list(s_slots & mentor_schedule[prev_mentor])
                                 
-                                if not candidates: continue
-
-                                def calculate_mentor_score(m_name):
-                                    score = 0
-                                    # ✅ 前回担当者の優先ロジック（最優先）
-                                    if want_prev and m_name == prev_mentor: score += 10000 
+                                if common_slots:
+                                    # 共通部分があるなら、その中からベストな時間（連投など）を選ぶ
+                                    common_slots.sort(key=lambda s: calculate_shift_score(prev_mentor, s), reverse=True)
+                                    assigned_mentor = prev_mentor
+                                    assigned_slot = common_slots[0]
                                     
-                                    assigned = mentor_assignments[m_name]
-                                    current_day = slot.split(" ")[0]
-                                    day_shifts = [s for s in assigned if s.startswith(current_day)]
-                                    
-                                    if not day_shifts:
-                                        if assigned: score += 50
-                                    else:
-                                        is_adj = any(adj in assigned for adj in get_adjacent_slots(slot))
-                                        if is_adj: score += 500
-                                        else: score -= 1000
-                                    score += random.random()
-                                    return score
+                                    # 確定処理
+                                    mentor_schedule[prev_mentor].remove(assigned_slot)
+                                    mentor_assignments[prev_mentor].add(assigned_slot)
 
-                                candidates.sort(key=calculate_mentor_score, reverse=True)
-                                best_mentor = candidates[0]
-                                assigned_mentor = best_mentor
-                                assigned_slot = slot
-                                mentor_schedule[best_mentor].remove(slot)
-                                mentor_assignments[best_mentor].add(slot)
-                                slot_popularity[slot] += 1
-                                break
+                            # 上記で決まらなかった場合のみ、通常の検索を行う
+                            if not assigned_mentor:
+                                # マッチング可能な枠を抽出
+                                feasible_slots = []
+                                for slot in s_slots:
+                                    for m_name in mentor_names_list:
+                                        if slot in mentor_schedule[m_name]:
+                                            m_streams_list = mentor_streams.get(m_name, [])
+                                            if s_stream == "未定" or s_stream in m_streams_list:
+                                                feasible_slots.append(slot)
+                                                break
+                                feasible_slots = list(set(feasible_slots))
+                                random.shuffle(feasible_slots) # 分散のためシャッフル
+
+                                for slot in feasible_slots:
+                                    candidates = []
+                                    for m_name in mentor_names_list:
+                                        m_streams_list = mentor_streams.get(m_name, [])
+                                        if s_stream != "未定" and s_stream not in m_streams_list: continue
+                                        if slot in mentor_schedule[m_name]:
+                                            candidates.append(m_name)
+                                    
+                                    if not candidates: continue
+
+                                    # 候補者の中からベスト（連投できる人など）を選ぶ
+                                    candidates.sort(key=lambda m: calculate_shift_score(m, slot), reverse=True)
+                                    
+                                    best_mentor = candidates[0]
+                                    assigned_mentor = best_mentor
+                                    assigned_slot = slot
+                                    mentor_schedule[best_mentor].remove(slot)
+                                    mentor_assignments[best_mentor].add(slot)
+                                    break
                             
                             results.append({
                                 "生徒氏名": s_name, "決定メンター": assigned_mentor, "決定日時": assigned_slot,
                                 "ステータス": "決定" if assigned_mentor else "未定", 
                                 "学校": s_row["学校"],
-                                "学年": s_row["学年"], # ✅ 学年を追加
+                                "学年": s_row["学年"],
                                 "生徒文理": s_stream
                             })
                         
                         df_res = pd.DataFrame(results)
                         df_res["_sort"] = df_res["決定日時"].apply(get_sort_key)
                         st.session_state['matching_results'] = df_res.sort_values(by="_sort").drop(columns=["_sort"])
-
-                        room_managers_list = []
-                        for m_name, remaining_slots in mentor_schedule.items():
-                            for slot in remaining_slots:
-                                if slot_popularity.get(slot, 0) > 0:
-                                    room_managers_list.append({"日時": slot, "部屋担当メンター": m_name})
-                        df_mgr = pd.DataFrame(room_managers_list)
-                        if not df_mgr.empty:
-                            df_mgr["_sort"] = df_mgr["日時"].apply(get_sort_key)
-                            df_mgr = df_mgr.sort_values(by="_sort").drop(columns=["_sort"])
-                            df_mgr_agg = df_mgr.groupby("日時")["部屋担当メンター"].apply(lambda x: ", ".join(x)).reset_index()
-                            st.session_state['room_managers_results'] = df_mgr_agg
-                        else:
-                            st.session_state['room_managers_results'] = pd.DataFrame(columns=["日時", "部屋担当メンター"])
 
                 if st.session_state.get('matching_results') is not None:
                     st.write("---")
@@ -579,13 +581,6 @@ with tab3:
                         st.success("✅ すべての設定が「生徒の希望内」かつ「メンターの空き時間内」です。")
 
                     st.write("---")
-                    st.subheader("✅ 2. 部屋担当者リスト")
-                    if st.session_state.get('room_managers_results') is not None and not st.session_state['room_managers_results'].empty:
-                        st.dataframe(st.session_state['room_managers_results'], hide_index=True, use_container_width=True)
-                    else:
-                        st.info("待機メンターはいません")
-
-                    st.write("---")
                     
                     st.markdown("### 💾 データ保存とリセット")
                     
@@ -598,7 +593,6 @@ with tab3:
                     
                     with col_save_only:
                         if st.button("① 決定内容を「履歴」に保存 (データは残す)", type="primary"):
-                            # ✅ 修正: 必要なカラムを選択して履歴へ保存
                             history_df = edited_df[edited_df["ステータス"]=="決定"][["生徒氏名", "決定メンター", "学校", "学年", "生徒文理"]]
                             history_df = history_df.rename(columns={"決定メンター": "前回担当メンター", "生徒文理": "文理"})
                             append_data_to_sheet(history_df, "history")
