@@ -199,7 +199,7 @@ with tab1:
                 s_grade = st.selectbox("学年 ※", ["中1", "中2", "中3", "高1", "高2", "高3"], index=None)
                 s_stream = st.radio("文理選択 ※", ["文系", "理系", "未定"], index=None)
             st.write("---")
-            s_request_mentor = st.text_input("担当してほしい東大生がいれば名前を書いてください")
+            s_request_mentor = st.text_input("担当してほしい東大生がいれば名前または属性（出身校・専攻など）を書いてください。")
             st.write("---")
             s_questions = st.text_area("当日聞きたいこと ※")
             
