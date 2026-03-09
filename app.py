@@ -206,7 +206,7 @@ with tab1:
             s_available = render_schedule_grid([], key_suffix="student")
 
             if st.form_submit_button("送信"):
-                required_fields = {"氏名": s_name, "LINE名": s_line_name, "学校名": s_school, "学年": s_grade, "文理": s_stream, "前回希望": s_want_prev, "質問": s_questions}
+                required_fields = {"氏名": s_name, "LINE名": s_line_name, "学校名": s_school, "学年": s_grade, "文理": s_stream,"質問": s_questions}
                 missing = [k for k, v in required_fields.items() if not v]
                 if not s_available: missing.append("日時")
                 
