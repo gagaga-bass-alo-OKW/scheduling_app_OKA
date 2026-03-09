@@ -216,7 +216,6 @@ with tab1:
                     df_s = load_data_from_sheet("students")
                     new_row = {
                         "生徒氏名": s_name, "LINE名": s_line_name, "学校": s_school, "学年": s_grade, "文理": s_stream,
-                        "前回希望": "あり" if s_want_prev == "希望する" else "なし",
                         "指名希望": s_request_mentor, "質問内容": s_questions,
                         "可能日時": ",".join(s_available)
                     }
