@@ -508,23 +508,8 @@ with tab3:
                             s_stream = s_row["文理"]
                             s_slots = s_obj["s_slots_set"]
                             
-                            want_prev = (s_row["前回希望"] == "あり")
-                            prev_mentor = None
-                            if not df_hist.empty and "生徒氏名" in df_hist.columns:
-                                hist = df_hist[df_hist["生徒氏名"] == s_name]
-                                if not hist.empty: prev_mentor = hist.iloc[-1]["前回担当メンター"]
 
                             assigned_mentor, assigned_slot = None, None
-
-                            # --- 前回担当優先 ---
-                            if want_prev and prev_mentor and prev_mentor in mentor_schedule:
-                                common_slots = list(s_slots & mentor_schedule[prev_mentor])
-                                if common_slots:
-                                    common_slots.sort(key=lambda s: calculate_shift_score(prev_mentor, s), reverse=True)
-                                    assigned_mentor = prev_mentor
-                                    assigned_slot = common_slots[0]
-                                    mentor_schedule[prev_mentor].remove(assigned_slot)
-                                    mentor_assignments[prev_mentor].add(assigned_slot)
 
                             # --- 通常マッチング ---
                             if not assigned_mentor:
