@@ -6,7 +6,7 @@ import time
 import random
 
 # ==========================================
-# 🛡️ 1. 基本設定・検索除け
+# 🛡️ 1. 基本設定
 # ==========================================
 st.set_page_config(page_title="ALOHA面談日程調整", layout="wide")
 st.markdown("""<meta name="robots" content="noindex, nofollow">""", unsafe_allow_html=True)
@@ -183,7 +183,6 @@ with tab1:
     st.header("中高生用：希望調査")
     if not is_accepting:
         st.warning("申し訳ありませんが、現在は申し込みを受け付けていません。")
-        st.info("お問い合わせは公式LINEまでお願いします。")
     else:
         st.info("まだ登録していない場合は、以下のリンクから公式LINEを追加してください。")
         st.markdown("### [👉 公式LINEを追加する](https://lin.ee/fhVvKJa)")
@@ -231,16 +230,13 @@ with tab1:
 # --- Tab 2: 大学生用 ---
 with tab2:
     st.header("大学生用：空きコマ登録・確認")
-    st.info("💡 生徒側の受付状況に関わらず、いつでも入力・修正可能です。")
-    
     col_search1, col_search2, col_search3 = st.columns([2, 2, 1])
     with col_search1:
         input_name_query = st.text_input("氏名（フルネーム）", key="m_search_name")
     with col_search2:
         input_pass_query = st.text_input("パスワード", type="password", key="m_search_pass")
     with col_search3:
-        st.write("")
-        st.write("")
+        st.write(""); st.write("")
         load_btn = st.button("呼出 / 新規")
 
     if 'mentor_form_defaults' not in st.session_state:
@@ -279,14 +275,10 @@ with tab2:
         with st.form("mentor_form"):
             st.markdown(f"**編集中のユーザー: {defaults['name']}**")
             m_stream = st.multiselect("文理選択", ["文系", "理系"], default=defaults["streams"])
-            st.write("")
-            is_unavailable = st.checkbox("🚫 今回は全日程参加できません（不参加）", value=(defaults["slots"] == ["参加不可"]))
-            
+            is_unavailable = st.checkbox("🚫 今回は不参加", value=(defaults["slots"] == ["参加不可"]))
             m_available = []
             if not is_unavailable:
                 m_available = render_schedule_grid(defaults["slots"], key_suffix="mentor")
-            else:
-                st.warning("「参加不可」として登録・更新します。")
             if st.form_submit_button("更新 / 登録"):
                 if (m_available or is_unavailable) and m_stream:
                     df_m = load_data_from_sheet("mentors")
@@ -304,239 +296,133 @@ with tab2:
 # --- Tab 3: 管理者 ---
 with tab3:
     st.header("🔒 管理者ダッシュボード")
-    if 'login_attempts' not in st.session_state: st.session_state['login_attempts'] = 0
-    
-    if st.session_state['login_attempts'] >= 5:
-        st.error("ロックされています。リロードしてください。")
-    else:
-        password = st.text_input("管理者パスワード", type="password")
-        if password and password == st.secrets.get("ADMIN_PASSWORD"):
-            st.session_state['login_attempts'] = 0
-            st.success("認証成功")
-            st.write("---")
+    password = st.text_input("管理者パスワード", type="password")
+    if password and password == st.secrets.get("ADMIN_PASSWORD"):
+        ad_tab1, ad_tab2, ad_tab3, ad_tab4 = st.tabs(["公開設定", "生徒管理", "メンター管理", "マッチング"])
+        
+        with ad_tab4:
+            df_st = load_data_from_sheet("students")
+            df_mt = load_data_from_sheet("mentors")
 
-            ad_tab1, ad_tab2, ad_tab3, ad_tab4 = st.tabs(["公開設定", "生徒管理", "メンター管理", "マッチング"])
+            st.subheader("🔒 指名マッチング (優先確定)")
+            if "fixed_pairs_data" not in st.session_state:
+                st.session_state["fixed_pairs_data"] = pd.DataFrame(columns=["生徒氏名", "メンター氏名"])
             
-            with ad_tab1:
-                col_set1, col_set2 = st.columns([1, 3])
-                with col_set1:
-                    if st.button("🔴 受付停止" if is_accepting else "🟢 受付開始"):
-                        set_status(not is_accepting)
-                        st.rerun()
-                with col_set2:
-                    st.info(f"現在の生徒受付ステータス: {'受付中' if is_accepting else '停止中'}")
+            student_options = [""] + (df_st["生徒氏名"].tolist() if not df_st.empty else [])
+            mentor_options = [""] + (df_mt["メンター氏名"].tolist() if not df_mt.empty else [])
 
-            with ad_tab2:
-                st.subheader("生徒データ一覧")
-                st.dataframe(load_data_from_sheet("students"))
-                with st.expander("データの管理（削除・ダミー生成）"):
-                    col_del, col_gen = st.columns(2)
-                    with col_del:
-                        if st.button("🗑️ 生徒データを全削除", key="del_st"):
-                            save_data_to_sheet(pd.DataFrame(), "students")
-                            st.error("生徒データをすべて削除しました。")
-                            time.sleep(1); st.rerun()
-                    with col_gen:
-                        if st.button("🧪 ダミー生徒を15名生成", key="gen_st"):
-                            dummy = []
-                            for i in range(15):
-                                dummy.append({
-                                    "生徒氏名": f"生徒{i+1:02d}", "LINE名": f"L{i}", "学校": "A高校", "学年": "高2", "文理": random.choice(["文系", "理系", "未定"]),
-                                    "前回希望": "なし", "指名希望": "", "質問内容": "テスト質問",
-                                    "可能日時": ",".join(random.sample(TIME_SLOTS, 8))
-                                })
-                            save_data_to_sheet(pd.DataFrame(dummy), "students")
-                            st.success("ダミー生徒を生成しました。")
-                            time.sleep(1); st.rerun()
+            updated_fixed_pairs = st.data_editor(
+                st.session_state["fixed_pairs_data"],
+                column_config={
+                    "生徒氏名": st.column_config.SelectboxColumn("生徒", options=student_options, required=True),
+                    "メンター氏名": st.column_config.SelectboxColumn("メンター", options=mentor_options, required=True)
+                },
+                num_rows="dynamic", key="fixed_pairs_v_final"
+            )
+            if st.button("💾 指名リストを一時保存"):
+                st.session_state["fixed_pairs_data"] = updated_fixed_pairs
+                st.success("指名リストを保存しました。")
 
-            with ad_tab3:
-                st.subheader("メンターデータ一覧")
-                st.dataframe(load_data_from_sheet("mentors"))
-                with st.expander("データの管理（削除・ダミー生成）"):
-                    col_del_m, col_gen_m = st.columns(2)
-                    with col_del_m:
-                        if st.button("🗑️ メンターデータを全削除", key="del_mt"):
-                            save_data_to_sheet(pd.DataFrame(), "mentors")
-                            st.error("メンターデータをすべて削除しました。")
-                            time.sleep(1); st.rerun()
-                    with col_gen_m:
-                        if st.button("🧪 ダミーメンターを10名生成", key="gen_mt"):
-                            dummy = []
-                            for i in range(10):
-                                dummy.append({
-                                    "メンター氏名": f"メンター{chr(65+i)}", "文理": random.choice(["文系", "理系", "文系,理系"]),
-                                    "可能日時": ",".join(random.sample(TIME_SLOTS, 15)), "パスワード": "1234"
-                                })
-                            save_data_to_sheet(pd.DataFrame(dummy), "mentors")
-                            st.success("ダミーメンターを生成しました。")
-                            time.sleep(1); st.rerun()
+            st.write("---")
+            st.subheader("🚀 自動マッチング実行 (担当回数均等化モード)")
+            if st.button("自動マッチング実行", type="primary"):
+                if df_st.empty or df_mt.empty:
+                    st.error("データが不足しています。")
+                else:
+                    results = []
+                    mentor_schedule = {}
+                    mentor_streams = {}
+                    mentor_assignments = {}
+                    mentor_names_list = list(df_mt["メンター氏名"]) 
 
-            with ad_tab4:
-                df_st = load_data_from_sheet("students")
-                df_mt = load_data_from_sheet("mentors")
-                df_hist = load_data_from_sheet("history")
+                    for _, row in df_mt.iterrows():
+                        m_name = row["メンター氏名"]
+                        mentor_schedule[m_name] = set(row["可能日時"].split(",")) if row["可能日時"] else set()
+                        mentor_assignments[m_name] = set()
+                        mentor_streams[m_name] = row["文理"].split(",") if row["文理"] else []
 
-                # ==========================================
-                # 🔒 指名固定設定エリア (入力保持を強化)
-                # ==========================================
-                st.subheader("🔒 指名マッチング (優先確定)")
-                st.info("ペアを選び、「指名リストを一時保存」を押してから下の実行ボタンを押してください。")
-                
-                if "fixed_pairs_data" not in st.session_state:
-                    st.session_state["fixed_pairs_data"] = pd.DataFrame(columns=["生徒氏名", "メンター氏名"])
-                
-                student_options = [""] + (df_st["生徒氏名"].tolist() if not df_st.empty else [])
-                mentor_options = [""] + (df_mt["メンター氏名"].tolist() if not df_mt.empty else [])
+                    students_list = []
+                    for _, s_row in df_st.iterrows():
+                        s_slots = s_row["可能日時"].split(",") if s_row["可能日時"] else []
+                        students_list.append({"data": s_row, "s_slots_set": set([s.strip() for s in s_slots]), "num_slots": len(s_slots)})
+                    students_list.sort(key=lambda x: x["num_slots"])
+                    processed_students = set()
 
-                updated_fixed_pairs = st.data_editor(
-                    st.session_state["fixed_pairs_data"],
-                    column_config={
-                        "生徒氏名": st.column_config.SelectboxColumn("生徒", options=student_options, required=True),
-                        "メンター氏名": st.column_config.SelectboxColumn("メンター", options=mentor_options, required=True)
-                    },
-                    num_rows="dynamic",
-                    key="fixed_pairs_v_final"
-                )
+                    # --- 回数均等化のためのスコアリング関数 ---
+                    def calculate_balance_score(m_name, target_slot):
+                        count = len(mentor_assignments[m_name])
+                        # 担当数1回につき-1000点の強力なペナルティ
+                        score = count * -1000 
+                        # 連続勤務への加点は回数より小さい100点に設定
+                        assigned = mentor_assignments[m_name]
+                        idx = TIME_SLOTS.index(target_slot) if target_slot in TIME_SLOTS else -1
+                        if idx != -1:
+                            adj = [TIME_SLOTS[idx-1] if idx>0 else "", TIME_SLOTS[idx+1] if idx<len(TIME_SLOTS)-1 else ""]
+                            if any(a in assigned for a in adj): score += 100
+                        return score + random.random()
 
-                if st.button("💾 指名リストを一時保存"):
-                    st.session_state["fixed_pairs_data"] = updated_fixed_pairs
-                    st.success("指名リストを一時保存しました。")
-
-                st.write("---")
-
-                # ==========================================
-                # 🚀 自動マッチング実行 (堅牢版)
-                # ==========================================
-                st.subheader("🚀 自動マッチング実行")
-                if st.button("自動マッチング実行", type="primary"):
-                    if df_st.empty or df_mt.empty:
-                        st.error("生徒またはメンターのデータが不足しています。")
-                    else:
-                        results = []
-                        mentor_schedule = {}
-                        mentor_streams = {}
-                        mentor_assignments = {}
-                        mentor_names_list = list(df_mt["メンター氏名"]) 
-
-                        for _, row in df_mt.iterrows():
-                            m_name = row["メンター氏名"]
-                            mentor_schedule[m_name] = set(row["可能日時"].split(",")) if row["可能日時"] else set()
-                            mentor_assignments[m_name] = set()
-                            mentor_streams[m_name] = row["文理"].split(",") if row["文理"] else []
-
-                        students_list = []
-                        for _, s_row in df_st.iterrows():
-                            s_slots = s_row["可能日時"].split(",") if s_row["可能日時"] else []
-                            students_list.append({
-                                "data": s_row, "s_slots_set": set([s.strip() for s in s_slots]), "num_slots": len(s_slots)
-                            })
-                        students_list.sort(key=lambda x: x["num_slots"])
-                        processed_students = set()
-
-                        def calculate_shift_score(m_name, target_slot):
-                            score = 0
-                            assigned = mentor_assignments[m_name]
-                            current_day = target_slot.split(" ")[0]
-                            day_shifts = [s for s in assigned if s.startswith(current_day)]
-                            if not day_shifts:
-                                if assigned: score += 10
-                            else:
-                                idx = TIME_SLOTS.index(target_slot) if target_slot in TIME_SLOTS else -1
-                                if idx != -1:
-                                    adj = [TIME_SLOTS[idx-1] if idx>0 else "", TIME_SLOTS[idx+1] if idx<len(TIME_SLOTS)-1 else ""]
-                                    if any(a in assigned for a in adj): score += 100
-                            return score + random.random()
-
-                        # --- PHASE 0: 指名固定 ---
-                        for _, pair in st.session_state["fixed_pairs_data"].iterrows():
-                            f_s = pair.get("生徒氏名")
-                            f_m = pair.get("メンター氏名")
-                            if not f_s or not f_m or f_s in processed_students: continue
-                            s_obj = next((x for x in students_list if x["data"]["生徒氏名"] == f_s), None)
-                            if not s_obj: continue
+                    # PHASE 0: 指名
+                    for _, pair in st.session_state["fixed_pairs_data"].iterrows():
+                        f_s, f_m = pair.get("生徒氏名"), pair.get("メンター氏名")
+                        if not f_s or not f_m or f_s in processed_students: continue
+                        s_obj = next((x for x in students_list if x["data"]["生徒氏名"] == f_s), None)
+                        if s_obj:
                             common = list(s_obj["s_slots_set"] & mentor_schedule.get(f_m, set()))
                             if common:
-                                common.sort(key=lambda s: calculate_shift_score(f_m, s), reverse=True)
-                                assigned_slot = common[0]
-                                mentor_schedule[f_m].remove(assigned_slot)
-                                mentor_assignments[f_m].add(assigned_slot)
-                                results.append({"生徒氏名": f_s, "決定メンター": f_m, "決定日時": assigned_slot, "ステータス": "決定(指名)", "学校": s_obj["data"]["学校"], "学年": s_obj["data"]["学年"], "生徒文理": s_obj["data"]["文理"]})
+                                common.sort(key=lambda s: calculate_balance_score(f_m, s), reverse=True)
+                                sel_slot = common[0]
+                                mentor_schedule[f_m].remove(sel_slot)
+                                mentor_assignments[f_m].add(sel_slot)
+                                results.append({"生徒氏名": f_s, "決定メンター": f_m, "決定日時": sel_slot, "ステータス": "決定(指名)", "学校": s_obj["data"]["学校"], "学年": s_obj["data"]["学年"], "生徒文理": s_obj["data"]["文理"]})
                                 processed_students.add(f_s)
 
-                        # --- PHASE 1: 通常マッチング ---
-                        for s_obj in students_list:
-                            s_row = s_obj["data"]
-                            s_name = s_row["生徒氏名"]
-                            if s_name in processed_students: continue
-                            
-                            s_stream, s_slots = s_row["文理"], s_obj["s_slots_set"]
-                            assigned_mentor, assigned_slot = None, None
-
-                            # 文理一致優先
-                            candidates = []
+                    # PHASE 1: 通常（均等化優先）
+                    for s_obj in students_list:
+                        s_row = s_obj["data"]
+                        if s_row["生徒氏名"] in processed_students: continue
+                        s_stream, s_slots = s_row["文理"], s_obj["s_slots_set"]
+                        candidates = []
+                        for slot in s_slots:
+                            for m_name in mentor_names_list:
+                                if slot in mentor_schedule[m_name]:
+                                    if s_stream == "未定" or s_stream in mentor_streams.get(m_name, []):
+                                        candidates.append((m_name, slot))
+                        
+                        if not candidates: # 文理無視
                             for slot in s_slots:
                                 for m_name in mentor_names_list:
-                                    if slot in mentor_schedule[m_name]:
-                                        if s_stream == "未定" or s_stream in mentor_streams.get(m_name, []):
-                                            candidates.append((m_name, slot))
-                            
-                            if candidates:
-                                candidates.sort(key=lambda x: calculate_shift_score(x[0], x[1]), reverse=True)
-                                assigned_mentor, assigned_slot = candidates[0]
-                            else:
-                                # 文理無視
-                                for slot in s_slots:
-                                    for m_name in mentor_names_list:
-                                        if slot in mentor_schedule[m_name]:
-                                            assigned_mentor, assigned_slot = m_name, slot; break
-                                    if assigned_mentor: break
+                                    if slot in mentor_schedule[m_name]: candidates.append((m_name, slot))
 
-                            if assigned_mentor:
-                                mentor_schedule[assigned_mentor].remove(assigned_slot)
-                                mentor_assignments[assigned_mentor].add(assigned_slot)
-                                results.append({"生徒氏名": s_name, "決定メンター": assigned_mentor, "決定日時": assigned_slot, "ステータス": "決定", "学校": s_row["学校"], "学年": s_row["学年"], "生徒文理": s_stream})
-                            else:
-                                results.append({"生徒氏名": s_name, "決定メンター": None, "決定日時": None, "ステータス": "未定(空きなし)", "学校": s_row["学校"], "学年": s_row["学年"], "生徒文理": s_stream})
-                            processed_students.add(s_name)
+                        if candidates:
+                            candidates.sort(key=lambda x: calculate_balance_score(x[0], x[1]), reverse=True)
+                            m_sel, t_sel = candidates[0]
+                            mentor_schedule[m_sel].remove(t_sel)
+                            mentor_assignments[m_sel].add(t_sel)
+                            results.append({"生徒氏名": s_row["生徒氏名"], "決定メンター": m_sel, "決定日時": t_sel, "ステータス": "決定", "学校": s_row["学校"], "学年": s_row["学年"], "生徒文理": s_stream})
+                        else:
+                            results.append({"生徒氏名": s_row["生徒氏名"], "決定メンター": None, "決定日時": None, "ステータス": "未定(空きなし)", "学校": s_row["学校"], "学年": s_row["学年"], "生徒文理": s_stream})
+                        processed_students.add(s_row["生徒氏名"])
 
-                        df_res = pd.DataFrame(results)
-                        if not df_res.empty:
-                            df_res["_sort"] = df_res["決定日時"].apply(get_sort_key)
-                            st.session_state['matching_results'] = df_res.sort_values(by="_sort").drop(columns=["_sort"])
-                        st.success("マッチング完了！")
+                    df_res = pd.DataFrame(results)
+                    if not df_res.empty:
+                        df_res["_sort"] = df_res["決定日時"].apply(get_sort_key)
+                        st.session_state['matching_results'] = df_res.sort_values(by="_sort").drop(columns=["_sort"])
+                    st.success("均等化マッチング完了！")
 
-                # 結果表示と調整
-                if st.session_state.get('matching_results') is not None:
-                    st.write("---")
-                    st.subheader("✅ マッチング結果調整")
-                    all_m = df_mt["メンター氏名"].unique().tolist() if not df_mt.empty else []
-                    edited_res = st.data_editor(
-                        st.session_state['matching_results'],
-                        column_config={
-                            "決定メンター": st.column_config.SelectboxColumn("担当", options=all_m),
-                            "決定日時": st.column_config.SelectboxColumn("日時", options=TIME_SLOTS),
-                            "ステータス": st.column_config.SelectboxColumn("状態", options=["決定", "未定", "キャンセル", "決定(指名)"])
-                        },
-                        hide_index=True, key="editor_final_v2"
-                    )
-                    st.session_state['matching_results'] = edited_res
-                    
-                    csv = edited_res.to_csv(index=False).encode('utf-8-sig')
-                    st.download_button("📥 結果CSVダウンロード", csv, "result.csv", "text/csv")
+            if st.session_state.get('matching_results') is not None:
+                st.write("---")
+                st.subheader("✅ マッチング結果調整")
+                edited_res = st.data_editor(st.session_state['matching_results'], use_container_width=True, hide_index=True, key="final_ed")
+                st.session_state['matching_results'] = edited_res
+                
+                # 担当回数の集計表示
+                st.write("📊 **各メンターの担当回数チェック**")
+                count_df = edited_res[edited_res["ステータス"].str.contains("決定")]["決定メンター"].value_counts().reset_index()
+                count_df.columns = ["メンター名", "担当数"]
+                st.table(count_df)
 
-                    if st.button("① 決定内容を「履歴」に保存"):
-                        hist = edited_res[edited_res["ステータス"].str.contains("決定")][["生徒氏名", "決定メンター", "学校", "学年", "生徒文理"]]
-                        hist = hist.rename(columns={"決定メンター": "前回担当メンター", "生徒文理": "文理"})
-                        append_data_to_sheet(hist, "history")
-                        st.success("履歴に保存しました。")
-
-                    if st.button("🗑️ ② データを全消去してリセット"):
-                        save_data_to_sheet(pd.DataFrame(), "students")
-                        save_data_to_sheet(pd.DataFrame(), "mentors")
-                        st.session_state['matching_results'] = None
-                        st.warning("リセットしました。リロードします。")
-                        time.sleep(1); st.rerun()
-
-        elif password:
-            st.session_state['login_attempts'] += 1
-            st.warning("パスワードが違います")
+                if st.button("🗑️ データを全消去してリセット"):
+                    save_data_to_sheet(pd.DataFrame(), "students")
+                    save_data_to_sheet(pd.DataFrame(), "mentors")
+                    st.session_state['matching_results'] = None
+                    st.rerun()
