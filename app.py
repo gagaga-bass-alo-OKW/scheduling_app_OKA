@@ -187,6 +187,10 @@ def run_matching(df_st, df_mt, fixed_pairs_df):
     mentor_assignments = {}
     mentor_names_list = list(df_mt["メンター氏名"])
 
+    def is_unmatched(m_name):
+        """今回のセッションでまだ1件もマッチングされていないメンターか"""
+        return len(mentor_assignments[m_name]) == 0
+
     for _, row in df_mt.iterrows():
         m_name = row["メンター氏名"]
         mentor_schedule[m_name] = set(row["可能日時"].split(",")) if row["可能日時"] else set()
@@ -270,7 +274,12 @@ def run_matching(df_st, df_mt, fixed_pairs_df):
                         candidates.append((m_name, slot))
 
         if candidates:
-            candidates.sort(key=lambda x: calculate_shift_score(x[0], x[1]), reverse=True)
+            candidates.sort(
+                key=lambda x: (
+                    0 if is_unmatched(x[0]) else 1,   # 未面談メンターを優先
+                    -calculate_shift_score(x[0], x[1]) # 同優先度内では密度スコア
+                )
+            )
             assigned_mentor, assigned_slot = candidates[0]
         else:
             # 文理無視
