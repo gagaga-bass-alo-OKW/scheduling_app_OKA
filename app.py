@@ -148,7 +148,7 @@ with tab1:
 
 # --- Tab 2: 大学生 ---
 with tab2:
-    st.header("メンター用：空きコマ登録")
+    st.header("メンター用：空き時間登録")
     c1, c2, c3 = st.columns([2, 2, 1])
     m_name_in = c1.text_input("氏名")
     m_pass_in = c2.text_input("パスワード", type="password")
