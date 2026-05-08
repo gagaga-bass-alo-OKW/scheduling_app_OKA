@@ -2,104 +2,47 @@ import streamlit as st
 import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-import time
 import random
 
 # ==========================================
-# 🛡️ 1. 基本設定
+# 🛡️ 1. 基本設定 & セキュリティ
 # ==========================================
-st.set_page_config(page_title="ALOHA面談日程調整", layout="wide")
-st.markdown("""<meta name="robots" content="noindex, nofollow">""", unsafe_allow_html=True)
+st.set_page_config(page_title="ALOHA面談日程調整システム", layout="wide")
 
-hide_streamlit_style = """
-            <style>
-            #MainMenu {visibility: hidden;}
-            footer {visibility: hidden;}
-            header {visibility: hidden;}
-            </style>
-            """
-st.markdown(hide_streamlit_style, unsafe_allow_html=True)
+# Streamlitのデフォルトメニューを隠す（運用用）
+st.markdown("""
+    <style>
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    .stTabs [data-baseweb="tab-list"] { gap: 24px; }
+    .stTabs [data-baseweb="tab"] { height: 50px; white-space: pre-wrap; font-weight: bold; }
+    </style>
+    """, unsafe_allow_html=True)
 
 # ==========================================
 # 📅 2. 時間枠設定 & ソート用ロジック
 # ==========================================
-DAYS_WEEKDAY = ["5/18", "5/19", "5/20", "5/21","5/22"]
+DAYS_WEEKDAY = ["5/18", "5/19", "5/20", "5/21", "5/22"]
 HOURS_WEEKDAY = range(19, 23)
-
 DAYS_WEEKEND = ["5/23", "5/24"]
 HOURS_WEEKEND = range(10, 23)
-
 ALL_DAYS_ORDER = DAYS_WEEKDAY + DAYS_WEEKEND
 
 TIME_SLOTS = []
 for d in DAYS_WEEKDAY:
-    for h in HOURS_WEEKDAY:
-        TIME_SLOTS.append(f"{d} {h}:00-{h+1}:00")
+    for h in HOURS_WEEKDAY: TIME_SLOTS.append(f"{d} {h}:00-{h+1}:00")
 for d in DAYS_WEEKEND:
-    for h in HOURS_WEEKEND:
-        TIME_SLOTS.append(f"{d} {h}:00-{h+1}:00")
+    for h in HOURS_WEEKEND: TIME_SLOTS.append(f"{d} {h}:00-{h+1}:00")
 
 def get_sort_key(val):
-    if not val or pd.isna(val) or not isinstance(val, str):
-        return (99, 99)
+    if not val or pd.isna(val) or not isinstance(val, str): return (99, 99)
     try:
         parts = val.split(" ")
-        if len(parts) < 2: return (99, 99)
-        date_part, time_part = parts[0], parts[1]
-        d_index = ALL_DAYS_ORDER.index(date_part) if date_part in ALL_DAYS_ORDER else 99
-        h_num = int(time_part.split(":")[0])
+        d_index = ALL_DAYS_ORDER.index(parts[0]) if parts[0] in ALL_DAYS_ORDER else 99
+        h_num = int(parts[1].split(":")[0])
         return (d_index, h_num)
-    except:
-        return (99, 99)
-
-def render_schedule_grid(default_selected=[], key_suffix=""):
-    st.write("▼ 以下の表で、可能な日時にチェック ✅ を入れてください")
-    
-    st.markdown("**📅 平日 (19:00 〜 23:00)**")
-    times_wd = [f"{h}:00-{h+1}:00" for h in HOURS_WEEKDAY]
-    df_wd = pd.DataFrame(False, index=times_wd, columns=DAYS_WEEKDAY)
-    
-    times_we = [f"{h}:00-{h+1}:00" for h in HOURS_WEEKEND]
-    df_we = pd.DataFrame(False, index=times_we, columns=DAYS_WEEKEND)
-
-    for slot_str in default_selected:
-        try:
-            parts = slot_str.split(" ")
-            d, t = parts[0], parts[1]
-            if d in DAYS_WEEKDAY and t in times_wd:
-                df_wd.at[t, d] = True
-            elif d in DAYS_WEEKEND and t in times_we:
-                df_we.at[t, d] = True
-        except:
-            pass
-
-    edited_wd = st.data_editor(
-        df_wd,
-        column_config={day: st.column_config.CheckboxColumn(day, width="small") for day in DAYS_WEEKDAY},
-        use_container_width=True,
-        key=f"grid_wd_{key_suffix}"
-    )
-    
-    st.markdown("**📅 土日祝 (10:00 〜 23:00)**")
-    edited_we = st.data_editor(
-        df_we,
-        column_config={day: st.column_config.CheckboxColumn(day, width="small") for day in DAYS_WEEKEND},
-        use_container_width=True,
-        height=500,
-        key=f"grid_we_{key_suffix}"
-    )
-
-    selected_slots = []
-    for t in edited_wd.index:
-        for d in edited_wd.columns:
-            if edited_wd.at[t, d]:
-                selected_slots.append(f"{d} {t}")
-    for t in edited_we.index:
-        for d in edited_we.columns:
-            if edited_we.at[t, d]:
-                selected_slots.append(f"{d} {t}")
-    
-    return selected_slots
+    except: return (99, 99)
 
 # ==========================================
 # ☁️ 3. Googleスプレッドシート連携
@@ -114,315 +57,237 @@ def get_spreadsheet():
     client = gspread.authorize(creds)
     return client.open_by_url(st.secrets["spreadsheet_url"])
 
-def load_data_from_sheet(sheet_name):
+def load_data(sheet_name):
     try:
         sh = get_spreadsheet()
-        try:
-            worksheet = sh.worksheet(sheet_name)
-        except:
-            return pd.DataFrame()
-        data = worksheet.get_all_records()
-        df = pd.DataFrame(data)
-        if "パスワード" in df.columns:
-            df["パスワード"] = df["パスワード"].astype(str)
-        return df.fillna("")
-    except Exception:
-        return pd.DataFrame()
+        ws = sh.worksheet(sheet_name)
+        data = ws.get_all_records()
+        df = pd.DataFrame(data).fillna("")
+        if "パスワード" in df.columns: df["パスワード"] = df["パスワード"].astype(str)
+        return df
+    except: return pd.DataFrame()
 
-def save_data_to_sheet(df, sheet_name):
+def save_data(df, sheet_name):
     sh = get_spreadsheet()
-    try:
-        worksheet = sh.worksheet(sheet_name)
-    except:
-        worksheet = sh.add_worksheet(title=sheet_name, rows=100, cols=20)
-    df = df.fillna("")
-    worksheet.clear()
+    try: ws = sh.worksheet(sheet_name)
+    except: ws = sh.add_worksheet(title=sheet_name, rows=100, cols=20)
+    ws.clear()
     if not df.empty:
-        worksheet.update([df.columns.values.tolist()] + df.values.tolist())
+        df = df.fillna("")
+        ws.update([df.columns.values.tolist()] + df.values.tolist())
 
-def append_data_to_sheet(df, sheet_name):
-    sh = get_spreadsheet()
-    try:
-        worksheet = sh.worksheet(sheet_name)
-    except:
-        worksheet = sh.add_worksheet(title=sheet_name, rows=100, cols=20)
-    df = df.fillna("")
-    existing_data = worksheet.get_all_values()
-    if not existing_data:
-        worksheet.update([df.columns.values.tolist()] + df.values.tolist())
-    else:
-        worksheet.append_rows(df.values.tolist())
+# グリッドUI
+def render_schedule_grid(default_selected=[], key_suffix=""):
+    st.write("▼ 可能な日時にチェック ✅ を入れてください")
+    times_wd = [f"{h}:00-{h+1}:00" for h in HOURS_WEEKDAY]
+    df_wd = pd.DataFrame(False, index=times_wd, columns=DAYS_WEEKDAY)
+    times_we = [f"{h}:00-{h+1}:00" for h in HOURS_WEEKEND]
+    df_we = pd.DataFrame(False, index=times_we, columns=DAYS_WEEKEND)
 
-def get_status():
-    try:
-        df = load_data_from_sheet("settings")
-        if df.empty or "status" not in df.columns: return True 
-        return df.iloc[0]["status"] == "OPEN"
-    except: return True
+    for s in default_selected:
+        try:
+            parts = s.split(" ")
+            d, t = parts[0], parts[1]
+            if d in DAYS_WEEKDAY: df_wd.at[t, d] = True
+            else: df_we.at[t, d] = True
+        except: pass
 
-def set_status(is_open):
-    df = pd.DataFrame([{"status": "OPEN" if is_open else "CLOSED"}])
-    save_data_to_sheet(df, "settings")
-
-is_accepting = get_status()
+    ed_wd = st.data_editor(df_wd, key=f"wd_{key_suffix}", use_container_width=True)
+    ed_we = st.data_editor(df_we, key=f"we_{key_suffix}", use_container_width=True, height=350)
+    
+    res = []
+    for t in ed_wd.index:
+        for d in ed_wd.columns:
+            if ed_wd.at[t, d]: res.append(f"{d} {t}")
+    for t in ed_we.index:
+        for d in ed_we.columns:
+            if ed_we.at[t, d]: res.append(f"{d} {t}")
+    return res
 
 # ==========================================
-# 🖥️ 4. アプリ画面構成
+# 🖥️ 4. メインアプリケーション
 # ==========================================
-st.title("📅 ALOHA面談日程調整")
+st.title("📅 ALOHA面談日程調整システム")
 
-if is_accepting:
-    st.markdown('#### <span style="color:green">🟢 現在、生徒の申し込みを受け付けています</span>', unsafe_allow_html=True)
+# ステータス確認
+status_df = load_data("settings")
+is_open = status_df.iloc[0]["status"] == "OPEN" if not status_df.empty else True
+
+if is_open:
+    st.markdown('#### <span style="color:green">🟢 生徒申し込み受付中</span>', unsafe_allow_html=True)
 else:
-    st.markdown('#### <span style="color:red">🔴 現在、生徒の申し込み受け付けは終了しています</span>', unsafe_allow_html=True)
+    st.markdown('#### <span style="color:red">🔴 現在、受付を停止しています</span>', unsafe_allow_html=True)
 
 tab1, tab2, tab3 = st.tabs(["🏫 生徒用入力", "🎓 大学生用入力", "⚙️ 管理者専用"])
 
-# --- Tab 1: 生徒用 ---
+# --- Tab 1: 生徒 ---
 with tab1:
-    st.header("中高生用：希望調査")
-    if not is_accepting:
-        st.warning("申し訳ありませんが、現在は申し込みを受け付けていません。")
+    if not is_open:
+        st.warning("現在は申し込みを受け付けていません。次回案内をお待ちください。")
     else:
-        st.info("まだ登録していない場合は、以下のリンクから公式LINEを追加してください。")
-        st.markdown("### [👉 公式LINEを追加する](https://lin.ee/fhVvKJa)")
-        st.write("---")
         with st.form("student_form"):
             col1, col2 = st.columns(2)
             with col1:
-                s_name_input = st.text_input("氏名（本名フルネーム） ※")
-                s_name = s_name_input.strip() if s_name_input else ""
-                s_line_name = st.text_input("LINEでのあなたの名前 ※")
+                s_name = st.text_input("氏名（本名フルネーム） ※").strip()
                 s_school = st.text_input("学校名 ※")
             with col2:
                 s_grade = st.selectbox("学年 ※", ["中1", "中2", "中3", "高1", "高2", "高3"], index=None)
-                s_stream = st.radio("文理選択 ※", ["文系", "理系", "未定"], index=None)
-            st.write("---")
-            s_request_mentor = st.text_input("担当してほしい東大生がいれば名前または属性（出身校・専攻など）を書いてください。")
-            st.write("---")
-            s_questions = st.text_area("当日聞きたいこと ※")
+                s_stream = st.radio("文理選択 ※", ["文系", "理系", "未定"], horizontal=True)
+            s_q = st.text_area("当日相談したいこと ※")
+            s_slots = render_schedule_grid([], "student")
             
-            s_available = render_schedule_grid([], key_suffix="student")
-
             if st.form_submit_button("送信"):
-                required_fields = {"氏名": s_name, "LINE名": s_line_name, "学校名": s_school, "学年": s_grade, "文理": s_stream,"質問": s_questions}
-                missing = [k for k, v in required_fields.items() if not v]
-                if not s_available: missing.append("日時")
-                
-                if missing:
-                    st.error(f"未入力があります: {', '.join(missing)}")
+                if s_name and s_slots and s_grade:
+                    df = load_data("students")
+                    new_row = {"生徒氏名": s_name, "学校": s_school, "学年": s_grade, "文理": s_stream, "質問内容": s_q, "可能日時": ",".join(s_slots)}
+                    df = pd.concat([df[df["生徒氏名"] != s_name], pd.DataFrame([new_row])]) if not df.empty else pd.DataFrame([new_row])
+                    save_data(df, "students")
+                    st.success(f"{s_name}さんの希望を登録しました！")
                 else:
-                    df_s = load_data_from_sheet("students")
-                    new_row = {
-                        "生徒氏名": s_name, "LINE名": s_line_name, "学校": s_school, "学年": s_grade, "文理": s_stream,
-                        "指名希望": s_request_mentor, "質問内容": s_questions,
-                        "可能日時": ",".join(s_available)
-                    }
-                    if not df_s.empty and "生徒氏名" in df_s.columns:
-                        df_s = df_s[df_s["生徒氏名"] != s_name]
-                        df_s = pd.concat([df_s, pd.DataFrame([new_row])], ignore_index=True)
-                        st.success(f"{s_name} さんの情報を更新しました！")
-                    else:
-                        df_s = pd.DataFrame([new_row])
-                        st.success("登録しました！")
-                    save_data_to_sheet(df_s, "students")
+                    st.error("氏名、学年、日時は必須入力です。")
 
-# --- Tab 2: 大学生用 ---
+# --- Tab 2: 大学生 ---
 with tab2:
-    st.header("大学生用：空きコマ登録・確認")
-    col_search1, col_search2, col_search3 = st.columns([2, 2, 1])
-    with col_search1:
-        input_name_query = st.text_input("氏名（フルネーム）", key="m_search_name")
-    with col_search2:
-        input_pass_query = st.text_input("パスワード", type="password", key="m_search_pass")
-    with col_search3:
-        st.write(""); st.write("")
-        load_btn = st.button("呼出 / 新規")
+    st.header("メンター用：空きコマ登録")
+    c1, c2, c3 = st.columns([2, 2, 1])
+    m_name_in = c1.text_input("氏名")
+    m_pass_in = c2.text_input("パスワード", type="password")
+    if c3.button("読込/新規"):
+        st.session_state["m_user"] = m_name_in
+        st.session_state["m_pass"] = m_pass_in
 
-    if 'mentor_form_defaults' not in st.session_state:
-        st.session_state['mentor_form_defaults'] = {"name": "", "streams": [], "slots": [], "password": ""}
-    
-    if load_btn:
-        if not input_name_query or not input_pass_query:
-            st.error("氏名とパスワードを入力してください。")
+    if "m_user" in st.session_state:
+        m_user = st.session_state["m_user"]
+        df_m = load_data("mentors")
+        m_data = df_m[df_m["メンター氏名"] == m_user].iloc[0] if not df_m.empty and m_user in df_m["メンター氏名"].values else None
+        
+        # パスワードチェック（新規の場合はスルー）
+        if m_data is not None and str(m_data["パスワード"]) != st.session_state["m_pass"]:
+            st.error("パスワードが一致しません。")
         else:
-            df_m_check = load_data_from_sheet("mentors")
-            target_data = pd.DataFrame()
-            if not df_m_check.empty and "メンター氏名" in df_m_check.columns:
-                target_data = df_m_check[df_m_check["メンター氏名"] == input_name_query.strip()]
-            
-            if not target_data.empty:
-                row = target_data.iloc[0]
-                if str(row["パスワード"]) == input_pass_query.strip():
-                    st.session_state['mentor_form_defaults'] = {
-                        "name": row["メンター氏名"],
-                        "streams": row["文理"].split(",") if row["文理"] else [],
-                        "slots": row["可能日時"].split(",") if row["可能日時"] else [],
-                        "password": str(row["パスワード"])
-                    }
-                    st.success(f"✅ {input_name_query} さんを読み込みました。")
-                else:
-                    st.error("❌ パスワードが違います。")
-            else:
-                st.session_state['mentor_form_defaults'] = {
-                    "name": input_name_query.strip(), "streams": [], "slots": [], "password": input_pass_query.strip()
-                }
-                st.info("🆕 新規登録します。")
-
-    st.write("---")
-    defaults = st.session_state['mentor_form_defaults']
-    if defaults["name"]:
-        with st.form("mentor_form"):
-            st.markdown(f"**編集中のユーザー: {defaults['name']}**")
-            m_stream = st.multiselect("文理選択", ["文系", "理系"], default=defaults["streams"])
-            is_unavailable = st.checkbox("🚫 今回は不参加", value=(defaults["slots"] == ["参加不可"]))
-            m_available = []
-            if not is_unavailable:
-                m_available = render_schedule_grid(defaults["slots"], key_suffix="mentor")
-            if st.form_submit_button("更新 / 登録"):
-                if (m_available or is_unavailable) and m_stream:
-                    df_m = load_data_from_sheet("mentors")
-                    new_row = {"メンター氏名": defaults["name"], "文理": ",".join(m_stream), "可能日時": ",".join(m_available) if not is_unavailable else "参加不可", "パスワード": defaults["password"]}
-                    if not df_m.empty and "メンター氏名" in df_m.columns:
-                        df_m = df_m[df_m["メンター氏名"] != defaults["name"]]
-                        df_m = pd.concat([df_m, pd.DataFrame([new_row])], ignore_index=True)
-                    else:
-                        df_m = pd.DataFrame([new_row])
-                    save_data_to_sheet(df_m, "mentors")
-                    st.success("保存しました！")
-                else:
-                    st.error("文理と日時は必須です。")
+            with st.form("mentor_form"):
+                st.info(f"編集モード: {m_user}")
+                m_stream = st.multiselect("対応可能文理", ["文系", "理系"], default=m_data["文理"].split(",") if m_data is not None else [])
+                m_slots = render_schedule_grid(m_data["可能日時"].split(",") if m_data is not None else [], "mentor_in")
+                if st.form_submit_button("保存"):
+                    new_row = {"メンター氏名": m_user, "文理": ",".join(m_stream), "可能日時": ",".join(m_slots), "パスワード": st.session_state["m_pass"]}
+                    df_m = pd.concat([df_m[df_m["メンター氏名"] != m_user], pd.DataFrame([new_row])]) if not df_m.empty else pd.DataFrame([new_row])
+                    save_data(df_m, "mentors")
+                    st.success("シフト情報を保存しました。")
 
 # --- Tab 3: 管理者 ---
 with tab3:
-    st.header("🔒 管理者ダッシュボード")
-    password = st.text_input("管理者パスワード", type="password")
-    if password and password == st.secrets.get("ADMIN_PASSWORD"):
-        ad_tab1, ad_tab2, ad_tab3, ad_tab4 = st.tabs(["公開設定", "生徒管理", "メンター管理", "マッチング"])
+    if st.text_input("管理者パスワード", type="password") == st.secrets["ADMIN_PASSWORD"]:
+        ad_tabs = st.tabs(["📊 データ確認・編集", "🎯 マッチング実行", "⚙️ システム設定"])
         
-        with ad_tab4:
-            df_st = load_data_from_sheet("students")
-            df_mt = load_data_from_sheet("mentors")
-
-            st.subheader("🔒 指名マッチング (優先確定)")
-            if "fixed_pairs_data" not in st.session_state:
-                st.session_state["fixed_pairs_data"] = pd.DataFrame(columns=["生徒氏名", "メンター氏名"])
+        # --- データ確認・編集 ---
+        with ad_tabs[0]:
+            st.subheader("生徒データ")
+            df_s_all = load_data("students")
+            ed_s = st.data_editor(df_s_all, num_rows="dynamic", use_container_width=True, key="admin_s")
+            if st.button("生徒データを更新保存"): 
+                save_data(ed_s, "students")
+                st.rerun()
             
-            student_options = [""] + (df_st["生徒氏名"].tolist() if not df_st.empty else [])
-            mentor_options = [""] + (df_mt["メンター氏名"].tolist() if not df_mt.empty else [])
-
-            updated_fixed_pairs = st.data_editor(
-                st.session_state["fixed_pairs_data"],
-                column_config={
-                    "生徒氏名": st.column_config.SelectboxColumn("生徒", options=student_options, required=True),
-                    "メンター氏名": st.column_config.SelectboxColumn("メンター", options=mentor_options, required=True)
-                },
-                num_rows="dynamic", key="fixed_pairs_v_final"
-            )
-            if st.button("💾 指名リストを一時保存"):
-                st.session_state["fixed_pairs_data"] = updated_fixed_pairs
-                st.success("指名リストを保存しました。")
-
             st.write("---")
-            st.subheader("🚀 自動マッチング実行 (担当回数均等化モード)")
-            if st.button("自動マッチング実行", type="primary"):
-                if df_st.empty or df_mt.empty:
-                    st.error("データが不足しています。")
-                else:
+            st.subheader("メンターデータ")
+            df_m_all = load_data("mentors")
+            ed_m = st.data_editor(df_m_all, num_rows="dynamic", use_container_width=True, key="admin_m")
+            if st.button("メンターデータを更新保存"): 
+                save_data(ed_m, "mentors")
+                st.rerun()
+
+        # --- マッチング実行 ---
+        with ad_tabs[1]:
+            st.subheader("指名マッチング設定")
+            if "fixed_pairs" not in st.session_state:
+                st.session_state["fixed_pairs"] = pd.DataFrame(columns=["生徒氏名", "メンター氏名"])
+            
+            s_list = [""] + df_s_all["生徒氏名"].tolist() if not df_s_all.empty else [""]
+            m_list = [""] + df_m_all["メンター氏名"].tolist() if not df_m_all.empty else [""]
+            
+            st.session_state["fixed_pairs"] = st.data_editor(
+                st.session_state["fixed_pairs"],
+                column_config={
+                    "生徒氏名": st.column_config.SelectboxColumn("生徒", options=s_list),
+                    "メンター氏名": st.column_config.SelectboxColumn("メンター", options=m_list)
+                }, num_rows="dynamic"
+            )
+
+            if st.button("🚀 自動マッチング開始（均等化優先）", type="primary"):
+                df_st = load_data("students")
+                df_mt = load_data("mentors")
+                
+                if not df_st.empty and not df_mt.empty:
                     results = []
-                    mentor_schedule = {}
-                    mentor_streams = {}
-                    mentor_assignments = {}
-                    mentor_names_list = list(df_mt["メンター氏名"]) 
+                    mentor_schedule = {m: set(row["可能日時"].split(",")) for m, row in df_mt.set_index("メンター氏名").iterrows()}
+                    mentor_assignments = {m: set() for m in mentor_schedule.keys()}
+                    mentor_streams = {m: row["文理"].split(",") for m, row in df_mt.set_index("メンター氏名").iterrows()}
 
-                    for _, row in df_mt.iterrows():
-                        m_name = row["メンター氏名"]
-                        mentor_schedule[m_name] = set(row["可能日時"].split(",")) if row["可能日時"] else set()
-                        mentor_assignments[m_name] = set()
-                        mentor_streams[m_name] = row["文理"].split(",") if row["文理"] else []
-
-                    students_list = []
-                    for _, s_row in df_st.iterrows():
-                        s_slots = s_row["可能日時"].split(",") if s_row["可能日時"] else []
-                        students_list.append({"data": s_row, "s_slots_set": set([s.strip() for s in s_slots]), "num_slots": len(s_slots)})
-                    students_list.sort(key=lambda x: x["num_slots"])
-                    processed_students = set()
-
-                    # --- 回数均等化のためのスコアリング関数 ---
-                    def calculate_balance_score(m_name, target_slot):
+                    # 均等化スコアリング関数（担当数が多いほど超減点）
+                    def calc_score(m_name, slot):
                         count = len(mentor_assignments[m_name])
-                        # 担当数1回につき-1000点の強力なペナルティ
-                        score = count * -1000 
-                        # 連続勤務への加点は回数より小さい100点に設定
+                        score = count * -1000  # 均等化ペナルティ
                         assigned = mentor_assignments[m_name]
-                        idx = TIME_SLOTS.index(target_slot) if target_slot in TIME_SLOTS else -1
+                        idx = TIME_SLOTS.index(slot) if slot in TIME_SLOTS else -1
                         if idx != -1:
                             adj = [TIME_SLOTS[idx-1] if idx>0 else "", TIME_SLOTS[idx+1] if idx<len(TIME_SLOTS)-1 else ""]
-                            if any(a in assigned for a in adj): score += 100
+                            if any(a in assigned for a in adj): score += 100 # 連続勤務加点
                         return score + random.random()
 
-                    # PHASE 0: 指名
-                    for _, pair in st.session_state["fixed_pairs_data"].iterrows():
-                        f_s, f_m = pair.get("生徒氏名"), pair.get("メンター氏名")
-                        if not f_s or not f_m or f_s in processed_students: continue
-                        s_obj = next((x for x in students_list if x["data"]["生徒氏名"] == f_s), None)
-                        if s_obj:
-                            common = list(s_obj["s_slots_set"] & mentor_schedule.get(f_m, set()))
+                    processed_s = set()
+                    # PHASE 0: 指名ペア
+                    for _, pair in st.session_state["fixed_pairs"].iterrows():
+                        fs, fm = pair["生徒氏名"], pair["メンター氏名"]
+                        if fs and fm and fs in df_st["生徒氏名"].values:
+                            s_row = df_st[df_st["生徒氏名"]==fs].iloc[0]
+                            s_slots = set(s_row["可能日時"].split(","))
+                            common = list(s_slots & mentor_schedule.get(fm, set()))
                             if common:
-                                common.sort(key=lambda s: calculate_balance_score(f_m, s), reverse=True)
-                                sel_slot = common[0]
-                                mentor_schedule[f_m].remove(sel_slot)
-                                mentor_assignments[f_m].add(sel_slot)
-                                results.append({"生徒氏名": f_s, "決定メンター": f_m, "決定日時": sel_slot, "ステータス": "決定(指名)", "学校": s_obj["data"]["学校"], "学年": s_obj["data"]["学年"], "生徒文理": s_obj["data"]["文理"]})
-                                processed_students.add(f_s)
+                                common.sort(key=lambda s: calc_score(fm, s), reverse=True)
+                                sel = common[0]
+                                mentor_schedule[fm].remove(sel); mentor_assignments[fm].add(sel)
+                                results.append({"生徒氏名":fs,"決定メンター":fm,"決定日時":sel,"ステータス":"決定(指名)","学年":s_row["学年"]})
+                                processed_s.add(fs)
 
-                    # PHASE 1: 通常（均等化優先）
-                    for s_obj in students_list:
-                        s_row = s_obj["data"]
-                        if s_row["生徒氏名"] in processed_students: continue
-                        s_stream, s_slots = s_row["文理"], s_obj["s_slots_set"]
+                    # PHASE 1: 一般マッチング
+                    remaining_st = df_st[~df_st["生徒氏名"].isin(processed_s)].to_dict('records')
+                    remaining_st.sort(key=lambda x: len(x["可能日時"].split(","))) # 候補が少ない生徒から
+
+                    for s_row in remaining_st:
+                        sn = s_row["生徒氏名"]
+                        s_slots = set(s_row["可能日時"].split(","))
                         candidates = []
                         for slot in s_slots:
-                            for m_name in mentor_names_list:
-                                if slot in mentor_schedule[m_name]:
-                                    if s_stream == "未定" or s_stream in mentor_streams.get(m_name, []):
-                                        candidates.append((m_name, slot))
+                            for mn in mentor_schedule.keys():
+                                if slot in mentor_schedule[mn]:
+                                    if s_row["文理"] == "未定" or s_row["文理"] in mentor_streams[mn]:
+                                        candidates.append((mn, slot))
                         
-                        if not candidates: # 文理無視
-                            for slot in s_slots:
-                                for m_name in mentor_names_list:
-                                    if slot in mentor_schedule[m_name]: candidates.append((m_name, slot))
-
                         if candidates:
-                            candidates.sort(key=lambda x: calculate_balance_score(x[0], x[1]), reverse=True)
-                            m_sel, t_sel = candidates[0]
-                            mentor_schedule[m_sel].remove(t_sel)
-                            mentor_assignments[m_sel].add(t_sel)
-                            results.append({"生徒氏名": s_row["生徒氏名"], "決定メンター": m_sel, "決定日時": t_sel, "ステータス": "決定", "学校": s_row["学校"], "学年": s_row["学年"], "生徒文理": s_stream})
+                            candidates.sort(key=lambda x: calc_score(x[0], x[1]), reverse=True)
+                            ms, ts = candidates[0]
+                            mentor_schedule[ms].remove(ts); mentor_assignments[ms].add(ts)
+                            results.append({"生徒氏名":sn,"決定メンター":ms,"決定日時":ts,"ステータス":"決定","学年":s_row["学年"]})
                         else:
-                            results.append({"生徒氏名": s_row["生徒氏名"], "決定メンター": None, "決定日時": None, "ステータス": "未定(空きなし)", "学校": s_row["学校"], "学年": s_row["学年"], "生徒文理": s_stream})
-                        processed_students.add(s_row["生徒氏名"])
-
-                    df_res = pd.DataFrame(results)
-                    if not df_res.empty:
-                        df_res["_sort"] = df_res["決定日時"].apply(get_sort_key)
-                        st.session_state['matching_results'] = df_res.sort_values(by="_sort").drop(columns=["_sort"])
-                    st.success("均等化マッチング完了！")
+                            results.append({"生徒氏名":sn,"決定メンター":None,"決定日時":None,"ステータス":"❌枠なし","学年":s_row["学年"]})
+                    
+                    st.session_state['matching_results'] = pd.DataFrame(results)
 
             if st.session_state.get('matching_results') is not None:
                 st.write("---")
-                st.subheader("✅ マッチング結果調整")
-                edited_res = st.data_editor(st.session_state['matching_results'], use_container_width=True, hide_index=True, key="final_ed")
-                st.session_state['matching_results'] = edited_res
+                st.subheader("調整と確認")
+                final_ed = st.data_editor(st.session_state['matching_results'], use_container_width=True)
                 
-                # 担当回数の集計表示
-                st.write("📊 **各メンターの担当回数チェック**")
-                count_df = edited_res[edited_res["ステータス"].str.contains("決定")]["決定メンター"].value_counts().reset_index()
-                count_df.columns = ["メンター名", "担当数"]
-                st.table(count_df)
+                counts = final_ed[final_ed["決定メンター"].notna()]["決定メンター"].value_counts()
+                st.bar_chart(counts)
+                st.write("📊 各メンターの合計担当回数")
+                st.table(counts)
 
-                if st.button("🗑️ データを全消去してリセット"):
-                    save_data_to_sheet(pd.DataFrame(), "students")
-                    save_data_to_sheet(pd.DataFrame(), "mentors")
-                    st.session_state['matching_results'] = None
-                    st.rerun()
+        # --- システム設定 ---
+        with ad_tabs[2]:
+            st.subheader("受付ステータス切替")
+            new_status = st.radio("現在の受付状態", ["OPEN", "CLOSED"], index=0 if is_open else 1)
+            if st.button("設定を保存"):
+                save_data(pd.DataFrame([{"status": new_status}]), "settings")
+                st.rerun()
