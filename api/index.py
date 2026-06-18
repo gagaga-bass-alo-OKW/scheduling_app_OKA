@@ -18,10 +18,42 @@ app = FastAPI()
 @app.exception_handler(Exception)
 async def debug_exception_handler(request: Request, exc: Exception):
     import traceback
-    return PlainTextResponse(
-        f"Internal Server Error\n\nException: {exc}\n\nTraceback:\n{traceback.format_exc()}",
-        status_code=500,
+    # gather additional template environment info to help debug Jinja errors
+    try:
+        tmpl_loader = getattr(templates, 'env', None)
+        loader_info = None
+        if tmpl_loader is not None:
+            loader = getattr(tmpl_loader, 'loader', None)
+            loader_info = {
+                'loader_type': type(loader).__name__ if loader is not None else None,
+                'searchpath': getattr(loader, 'searchpath', None),
+            }
+        else:
+            loader_info = None
+    except Exception as e:
+        loader_info = f"error when getting loader info: {e}"
+
+    body = (
+        f"Internal Server Error\n\nException: {exc}\n\nTraceback:\n{traceback.format_exc()}\n\n"
+        f"TEMPLATE_LOADER_INFO: {loader_info}\n"
     )
+    return PlainTextResponse(body, status_code=500)
+
+
+@app.get("/_diag")
+def diag():
+    # return basic diagnostics about template environment and paths
+    try:
+        env = getattr(templates, 'env', None)
+        loader = getattr(env, 'loader', None) if env is not None else None
+        return {
+            'templates_dir': str(TEMPLATES_DIR),
+            'templates_env': type(env).__name__ if env is not None else None,
+            'loader_type': type(loader).__name__ if loader is not None else None,
+            'loader_searchpath': getattr(loader, 'searchpath', None),
+        }
+    except Exception as e:
+        return {'error': str(e)}
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 TEMPLATES_DIR = BASE_DIR / "templates"
