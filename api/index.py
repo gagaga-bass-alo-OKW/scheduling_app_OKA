@@ -7,12 +7,21 @@ from pathlib import Path
 import gspread
 import pandas as pd
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from oauth2client.service_account import ServiceAccountCredentials
 
 app = FastAPI()
+
+
+@app.exception_handler(Exception)
+async def debug_exception_handler(request: Request, exc: Exception):
+    import traceback
+    return PlainTextResponse(
+        f"Internal Server Error\n\nException: {exc}\n\nTraceback:\n{traceback.format_exc()}",
+        status_code=500,
+    )
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 TEMPLATES_DIR = BASE_DIR / "templates"
