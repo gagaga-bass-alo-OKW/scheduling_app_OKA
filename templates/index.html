@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+  <p>このアプリはVercel上で動作するPython ASGIアプリに移行されました。以下の操作から開始してください。</p>
+  <ul>
+    <li><a href="/student">生徒用フォーム</a></li>
+    <li><a href="/mentor">メンター用フォーム</a></li>
+    <li><a href="/admin">管理者ダッシュボード</a></li>
+  </ul>
+  <p class="small-note">Vercelでは長時間稼働型のStreamlitサーバーがスリープしやすいため、代わりにFastAPIとフォームUIで動作します。</p>
+{% endblock %}

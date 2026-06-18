@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block content %}
+  {% if messages %}
+    {% for message in messages %}
+      <div class="message {{ 'error' if 'エラー' in message or '違います' in message else 'success' }}">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+
+  <form action="/mentor" method="post">
+    <label>氏名（フルネーム）</label>
+    <input type="text" name="name" value="{{ form.name | default('') }}" />
+
+    <label>パスワード</label>
+    <input type="password" name="password" value="{{ form.password | default('') }}" />
+
+    <label>文理選択</label>
+    {% for stream in mentor_streams %}
+      <div class="grid-checkbox">
+        <input type="checkbox" id="stream_{{ loop.index }}" name="stream_{{ stream }}" {% if stream in form.streams %}checked{% endif %} />
+        <label for="stream_{{ loop.index }}">{{ stream }}</label>
+      </div>
+    {% endfor %}
+
+    <div class="grid-checkbox">
+      <input type="checkbox" id="is_unavailable" name="is_unavailable" {% if form.is_unavailable %}checked{% endif %} />
+      <label for="is_unavailable">🚫 今回は全日程参加できません（不参加）</label>
+    </div>
+
+    <h3>可能な日時を選択してください</h3>
+    <div class="table-scroll">
+      <table class="wide-table">
+        <thead>
+          <tr>
+            <th>時間</th>
+            {% for day in ["6/29", "6/30", "7/1", "7/2", "7/3"] %}
+              <th>{{ day }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in weekday_rows %}
+            <tr>
+              <td>{{ row.time }}</td>
+              {% for cell in row.cells %}
+                <td><input type="checkbox" name="{{ cell.slot_name }}" value="{{ cell.slot_value }}" {% if cell.checked %}checked{% endif %} /></td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <h3>土日祝</h3>
+    <div class="table-scroll">
+      <table class="wide-table">
+        <thead>
+          <tr>
+            <th>時間</th>
+            {% for day in ["7/4", "7/5"] %}
+              <th>{{ day }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in weekend_rows %}
+            <tr>
+              <td>{{ row.time }}</td>
+              {% for cell in row.cells %}
+                <td><input type="checkbox" name="{{ cell.slot_name }}" value="{{ cell.slot_value }}" {% if cell.checked %}checked{% endif %} /></td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="actions">
+      <button type="submit" name="action" value="load" class="secondary">呼出 / 新規</button>
+      <button type="submit" name="action" value="save">更新 / 登録</button>
+    </div>
+  </form>
+{% endblock %}

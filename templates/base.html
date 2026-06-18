@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{ title }}</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #f8fafc; color: #111827; }
+      .container { max-width: 960px; margin: 0 auto; padding: 24px; }
+      header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; }
+      header h1 { margin: 0; font-size: 1.4rem; }
+      nav a { margin-right: 12px; color: #0f172a; text-decoration: none; }
+      nav a:hover { text-decoration: underline; }
+      .card { background: white; border-radius: 12px; box-shadow: 0 2px 12px rgba(15, 23, 42, 0.08); padding: 24px; margin-top: 20px; }
+      .message { border-radius: 8px; padding: 14px 18px; margin-bottom: 16px; }
+      .message.error { background: #fee2e2; color: #991b1b; }
+      .message.success { background: #d1fae5; color: #065f46; }
+      .small-note { color: #475569; font-size: 0.95rem; }
+      label { display: block; margin-bottom: 8px; font-weight: 600; }
+      input[type=text], input[type=password], select, textarea { width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; margin-bottom: 14px; }
+      textarea { min-height: 120px; resize: vertical; }
+      table { width: 100%; border-collapse: collapse; margin-bottom: 18px; }
+      th, td { border: 1px solid #e2e8f0; padding: 8px; text-align: center; }
+      th { background: #f1f5f9; }
+      button { cursor: pointer; border: none; border-radius: 10px; background: #2563eb; color: white; padding: 10px 18px; font-size: 1rem; }
+      button.secondary { background: #475569; }
+      .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
+      .grid-checkbox { display: inline-flex; align-items: center; gap: 6px; }
+      .table-scroll { overflow-x: auto; }
+      .wide-table th, .wide-table td { white-space: nowrap; }
+      .status-chip { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 0.9rem; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <div>
+          <h1>{{ title }}</h1>
+          <p class="small-note">StreamlitからVercel対応に移行しました。</p>
+        </div>
+        <nav>
+          <a href="/">Home</a>
+          <a href="/student">生徒</a>
+          <a href="/mentor">メンター</a>
+          <a href="/admin">管理者</a>
+        </nav>
+      </header>
+      <div class="card">
+        {% block content %}{% endblock %}
+      </div>
+    </div>
+  </body>
+</html>

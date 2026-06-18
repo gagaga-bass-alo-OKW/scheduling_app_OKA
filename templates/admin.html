@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block content %}
+  {% if messages %}
+    {% for message in messages %}
+      {% set is_error = ('エラー' in message) or ('不足' in message) or ('違います' in message) %}
+      <div class="message {{ 'error' if is_error else 'success' }}">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+
+  <form action="/admin" method="post">
+    <label>管理者パスワード</label>
+    <input type="password" name="admin_password" />
+
+    <div class="actions">
+      <button type="submit" name="action" value="view">ダッシュボード表示</button>
+      <button type="submit" name="action" value="toggle_status">受付開始/停止切替</button>
+      <button type="submit" name="action" value="match">自動マッチング実行</button>
+      <button type="submit" name="action" value="clear_students" class="secondary">生徒データ全削除</button>
+      <button type="submit" name="action" value="clear_mentors" class="secondary">メンターデータ全削除</button>
+    </div>
+  </form>
+
+  {% if show_dashboard %}
+    <h3>受付ステータス: {{ '受付中' if is_accepting else '停止中' }}</h3>
+
+    <h3>生徒データ一覧</h3>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            {% if students %}
+              {% for key in students[0].keys() %}
+                <th>{{ key }}</th>
+              {% endfor %}
+            {% endif %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in students %}
+            <tr>
+              {% for value in row.values() %}
+                <td>{{ value }}</td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+          {% if not students %}
+            <tr><td colspan="100%">生徒データはありません。</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+
+    <h3>メンターデータ一覧</h3>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            {% if mentors %}
+              {% for key in mentors[0].keys() %}
+                <th>{{ key }}</th>
+              {% endfor %}
+            {% endif %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in mentors %}
+            <tr>
+              {% for value in row.values() %}
+                <td>{{ value }}</td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+          {% if not mentors %}
+            <tr><td colspan="100%">メンターデータはありません。</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+
+    <h3>マッチング結果</h3>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            {% if results %}
+              {% for key in results[0].keys() %}
+                <th>{{ key }}</th>
+              {% endfor %}
+            {% endif %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in results %}
+            <tr>
+              {% for value in row.values() %}
+                <td>{{ value }}</td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+          {% if not results %}
+            <tr><td colspan="100%">マッチング結果はありません。</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+{% endblock %}

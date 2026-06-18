@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block content %}
+  {% if messages %}
+    {% for message in messages %}
+      <div class="message {{ 'error' if 'エラー' in message or '未入力' in message or '違います' in message else 'success' }}">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+
+  <form action="/student" method="post">
+    <label>氏名（本名フルネーム）</label>
+    <input type="text" name="s_name" value="{{ form.s_name | default('') }}" />
+
+    <label>LINEでのあなたの名前</label>
+    <input type="text" name="s_line_name" value="{{ form.s_line_name | default('') }}" />
+
+    <label>学校名</label>
+    <input type="text" name="s_school" value="{{ form.s_school | default('') }}" />
+
+    <label>学年</label>
+    <select name="s_grade">
+      <option value="">選択してください</option>
+      {% for grade in grades %}
+        <option value="{{ grade }}" {% if form.s_grade == grade %}selected{% endif %}>{{ grade }}</option>
+      {% endfor %}
+    </select>
+
+    <label>文理選択</label>
+    {% for stream in streams %}
+      <div class="grid-checkbox">
+        <input type="radio" id="stream_{{ loop.index }}" name="s_stream" value="{{ stream }}" {% if form.s_stream == stream %}checked{% endif %} />
+        <label for="stream_{{ loop.index }}">{{ stream }}</label>
+      </div>
+    {% endfor %}
+
+    <label>担当してほしい東大生がいれば</label>
+    <input type="text" name="s_request_mentor" value="{{ form.s_request_mentor | default('') }}" />
+
+    <label>当日聞きたいこと</label>
+    <textarea name="s_questions">{{ form.s_questions | default('') }}</textarea>
+
+    <h3>可能な日時を選択してください</h3>
+    <div class="table-scroll">
+      <table class="wide-table">
+        <thead>
+          <tr>
+            <th>時間</th>
+            {% for day in ["6/29", "6/30", "7/1", "7/2", "7/3"] %}
+              <th>{{ day }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in weekday_rows %}
+            <tr>
+              <td>{{ row.time }}</td>
+              {% for cell in row.cells %}
+                <td><input type="checkbox" name="{{ cell.slot_name }}" value="{{ cell.slot_value }}" {% if cell.checked %}checked{% endif %} /></td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <h3>土日祝</h3>
+    <div class="table-scroll">
+      <table class="wide-table">
+        <thead>
+          <tr>
+            <th>時間</th>
+            {% for day in ["7/4", "7/5"] %}
+              <th>{{ day }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in weekend_rows %}
+            <tr>
+              <td>{{ row.time }}</td>
+              {% for cell in row.cells %}
+                <td><input type="checkbox" name="{{ cell.slot_name }}" value="{{ cell.slot_value }}" {% if cell.checked %}checked{% endif %} /></td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="actions">
+      <button type="submit">送信</button>
+    </div>
+  </form>
+{% endblock %}
