@@ -188,7 +188,6 @@ def run_matching(df_st, df_mt, fixed_pairs_df):
     mentor_names_list = list(df_mt["メンター氏名"])
 
     def is_unmatched(m_name):
-        """今回のセッションでまだ1件もマッチングされていないメンターか"""
         return len(mentor_assignments[m_name]) == 0
 
     for _, row in df_mt.iterrows():
@@ -241,7 +240,8 @@ def run_matching(df_st, df_mt, fixed_pairs_df):
             continue
         common.sort(key=lambda s: calculate_shift_score(f_m, s), reverse=True)
         assigned_slot = common[0]
-        mentor_schedule[f_m].remove(assigned_slot)
+        if assigned_slot in mentor_schedule[f_m]:
+            mentor_schedule[f_m].remove(assigned_slot)
         mentor_assignments[f_m].add(assigned_slot)
         results.append({
             "生徒氏名": f_s,
@@ -276,8 +276,8 @@ def run_matching(df_st, df_mt, fixed_pairs_df):
         if candidates:
             candidates.sort(
                 key=lambda x: (
-                    0 if is_unmatched(x[0]) else 1,   # 未面談メンターを優先
-                    -calculate_shift_score(x[0], x[1]) # 同優先度内では密度スコア
+                    0 if is_unmatched(x[0]) else 1,
+                    -calculate_shift_score(x[0], x[1])
                 )
             )
             assigned_mentor, assigned_slot = candidates[0]
@@ -292,7 +292,8 @@ def run_matching(df_st, df_mt, fixed_pairs_df):
                     break
 
         if assigned_mentor:
-            mentor_schedule[assigned_mentor].remove(assigned_slot)
+            if assigned_slot in mentor_schedule[assigned_mentor]:
+                mentor_schedule[assigned_mentor].remove(assigned_slot)
             mentor_assignments[assigned_mentor].add(assigned_slot)
             results.append({
                 "生徒氏名": s_name,
@@ -436,9 +437,11 @@ with tab2:
                     st.session_state["mentor_form_defaults"] = {
                         "name": row["メンター氏名"],
                         "streams": row["文理"].split(",") if row["文理"] else [],
-                        "slots": row["可能日時"].split(",") if row["可能日時"] else [],
+                        "slots": row["possible_days"].split(",") if "possible_days" in row else (row["可能日時"].split(",") if "可能日時" in row else []),
                         "password": str(row["パスワード"]),
                     }
+                    if "possible_days" in row: # 互換性担保
+                         st.session_state["mentor_form_defaults"]["slots"] = row["possible_days"].split(",")
                     st.success(f"✅ {input_name_query} さんを読み込みました。")
                 else:
                     st.error("❌ パスワードが違います。")
@@ -534,26 +537,28 @@ with tab3:
             col_del, col_gen = st.columns(2)
             with col_del:
                 if st.button("🗑️ 生徒データを全削除", key="del_st"):
-                    save_data_to_sheet(pd.DataFrame(), "students")
+                    with st.status("生徒データを削除中...", expanded=True):
+                        save_data_to_sheet(pd.DataFrame(), "students")
                     st.error("生徒データをすべて削除しました。")
                     time.sleep(1)
                     st.rerun()
             with col_gen:
                 if st.button("🧪 ダミー生徒を15名生成", key="gen_st"):
-                    dummy = []
-                    for i in range(15):
-                        dummy.append({
-                            "生徒氏名": f"生徒{i+1:02d}",
-                            "LINE名": f"L{i}",
-                            "学校": "A高校",
-                            "学年": "高2",
-                            "文理": random.choice(["文系", "理系", "未定"]),
-                            "前回希望": "なし",
-                            "指名希望": "",
-                            "質問内容": "テスト質問",
-                            "可能日時": ",".join(random.sample(TIME_SLOTS, 8)),
-                        })
-                    save_data_to_sheet(pd.DataFrame(dummy), "students")
+                    with st.status("ダミー生徒を生成中...", expanded=True):
+                        dummy = []
+                        for i in range(15):
+                            dummy.append({
+                                "生徒氏名": f"生徒{i+1:02d}",
+                                "LINE名": f"L{i}",
+                                "学校": "A高校",
+                                "学年": "高2",
+                                "文理": random.choice(["文系", "理系", "未定"]),
+                                "前回希望": "なし",
+                                "指名希望": "",
+                                "質問内容": "テスト質問",
+                                "可能日時": ",".join(random.sample(TIME_SLOTS, 8)),
+                            })
+                        save_data_to_sheet(pd.DataFrame(dummy), "students")
                     st.success("ダミー生徒を生成しました。")
                     time.sleep(1)
                     st.rerun()
@@ -566,21 +571,23 @@ with tab3:
             col_del_m, col_gen_m = st.columns(2)
             with col_del_m:
                 if st.button("🗑️ メンターデータを全削除", key="del_mt"):
-                    save_data_to_sheet(pd.DataFrame(), "mentors")
+                    with st.status("メンターデータを削除中...", expanded=True):
+                        save_data_to_sheet(pd.DataFrame(), "mentors")
                     st.error("メンターデータをすべて削除しました。")
                     time.sleep(1)
                     st.rerun()
             with col_gen_m:
                 if st.button("🧪 ダミーメンターを10名生成", key="gen_mt"):
-                    dummy = []
-                    for i in range(10):
-                        dummy.append({
-                            "メンター氏名": f"メンター{chr(65+i)}",
-                            "文理": random.choice(["文系", "理系", "文系,理系"]),
-                            "可能日時": ",".join(random.sample(TIME_SLOTS, 15)),
-                            "パスワード": "1234",
-                        })
-                    save_data_to_sheet(pd.DataFrame(dummy), "mentors")
+                    with st.status("ダミーメンターを生成中...", expanded=True):
+                        dummy = []
+                        for i in range(10):
+                            dummy.append({
+                                "メンター氏名": f"メンター{chr(65+i)}",
+                                "文理": random.choice(["文系", "理系", "文系,理系"]),
+                                "可能日時": ",".join(random.sample(TIME_SLOTS, 15)),
+                                "パスワード": "1234",
+                            })
+                        save_data_to_sheet(pd.DataFrame(dummy), "mentors")
                     st.success("ダミーメンターを生成しました。")
                     time.sleep(1)
                     st.rerun()
@@ -591,10 +598,10 @@ with tab3:
         df_hist = load_data_from_sheet("history")
 
         # ==========================================
-        # 🔒 指名固定設定エリア
+        # 🔒 指名固定設定エリア (セッション同期を完全化)
         # ==========================================
         st.subheader("🔒 指名マッチング (優先確定)")
-        st.info("ペアを選び、「指名リストを一時保存」を押してから下の実行ボタンを押してください。")
+        st.info("💡 ペアを選び、「💾 指名リストを一時保存」ボタンを必ず押してください。")
 
         if "fixed_pairs_data" not in st.session_state:
             st.session_state["fixed_pairs_data"] = pd.DataFrame(columns=["生徒氏名", "メンター氏名"])
@@ -614,7 +621,7 @@ with tab3:
 
         if st.button("💾 指名リストを一時保存"):
             st.session_state["fixed_pairs_data"] = updated_fixed_pairs
-            st.success("指名リストを一時保存しました。")
+            st.success("指名リストを一時保存しました。このまま下の実行ボタンを押してください。")
 
         st.write("---")
 
@@ -627,19 +634,24 @@ with tab3:
             if df_st.empty or df_mt.empty:
                 st.error("生徒またはメンターのデータが不足しています。")
             else:
-                results = run_matching(df_st, df_mt, st.session_state["fixed_pairs_data"])
-                df_res = pd.DataFrame(results)
-                if not df_res.empty:
-                    df_res["_sort"] = df_res["決定日時"].apply(get_sort_key)
-                    st.session_state["matching_results"] = df_res.sort_values(by="_sort").drop(columns=["_sort"])
-                st.success("マッチング完了！")
+                with st.spinner("マッチングを計算中..."):
+                    results = run_matching(df_st, df_mt, st.session_state["fixed_pairs_data"])
+                    df_res = pd.DataFrame(results)
+                    if not df_res.empty:
+                        df_res["_sort"] = df_res["決定日時"].apply(get_sort_key)
+                        st.session_state["matching_results"] = df_res.sort_values(by="_sort").drop(columns=["_sort"])
+                    st.success("マッチング完了！")
 
-        # 結果表示と調整
-        if st.session_state.get("matching_results") is not None:
+        # ==========================================
+        # 🔄 結果表示と調整 (セッションの維持を担保)
+        # ==========================================
+        if "matching_results" in st.session_state and st.session_state["matching_results"] is not None:
             st.write("---")
             st.subheader("✅ マッチング結果調整")
 
             all_m = df_mt["メンター氏名"].unique().tolist() if not df_mt.empty else []
+            
+            # 手動編集した値を随時保持
             edited_res = st.data_editor(
                 st.session_state["matching_results"],
                 column_config={
@@ -648,25 +660,28 @@ with tab3:
                     "ステータス": st.column_config.SelectboxColumn("状態", options=["決定", "未定", "キャンセル", "決定(指名)"]),
                 },
                 hide_index=True,
-                key="editor_final_v2",
+                key="editor_final_v3",
             )
+            # 随時セッションに同期
             st.session_state["matching_results"] = edited_res
 
             csv = edited_res.to_csv(index=False).encode("utf-8-sig")
             st.download_button("📥 結果CSVダウンロード", csv, "result.csv", "text/csv")
 
             if st.button("① 決定内容を「履歴」に保存"):
-                hist = edited_res[edited_res["ステータス"].str.contains("決定")][
-                    ["生徒氏名", "決定メンター", "学校", "学年", "生徒文理"]
-                ]
-                hist = hist.rename(columns={"決定メンター": "前回担当メンター", "生徒文理": "文理"})
-                append_data_to_sheet(hist, "history")
+                with st.status("履歴へ保存中...", expanded=True):
+                    hist = edited_res[edited_res["ステータス"].str.contains("決定")][
+                        ["生徒氏名", "決定メンター", "学校", "学年", "生徒文理"]
+                    ]
+                    hist = hist.rename(columns={"決定メンター": "前回担当メンター", "生徒文理": "文理"})
+                    append_data_to_sheet(hist, "history")
                 st.success("履歴に保存しました。")
 
             if st.button("🗑️ ② データを全消去してリセット"):
-                save_data_to_sheet(pd.DataFrame(), "students")
-                save_data_to_sheet(pd.DataFrame(), "mentors")
-                st.session_state["matching_results"] = None
+                with st.status("データをリセット中...", expanded=True):
+                    save_data_to_sheet(pd.DataFrame(), "students")
+                    save_data_to_sheet(pd.DataFrame(), "mentors")
+                    st.session_state["matching_results"] = None
                 st.warning("リセットしました。リロードします。")
                 time.sleep(1)
                 st.rerun()
