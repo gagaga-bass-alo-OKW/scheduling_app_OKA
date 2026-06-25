@@ -356,7 +356,7 @@ with tab1:
                 s_line_name = st.text_input("LINEでのあなたの名前 ※")
                 s_school = st.text_input("学校名 ※")
             with col2:
-                s_grade = st.selectbox("学年 ※", ["中1", "中2", "中3", "高1", "高2", "高3"], index=None)
+                s_grade = st.selectbox("学年 ※", ["中1", "中2", "中3", "高1", "高2", "高3", "過卒"], index=None)
                 s_stream = st.radio("文理選択 ※", ["文系", "理系", "未定"], index=None)
 
             st.write("---")
